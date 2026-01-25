@@ -2,3 +2,5 @@
 .specstory
 data
 venv
+api-thetadata
+src/__pycache__
