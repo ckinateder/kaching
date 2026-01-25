@@ -26,7 +26,7 @@ pip install -r requirements.txt
 ### Phase 1.1: Download Options Data
 
 ```python
-from src.data_downloader import ThetaDataDownloader
+from src.downloaders.options_downloader import ThetaDataDownloader
 
 # Initialize downloader
 downloader = ThetaDataDownloader()
@@ -49,7 +49,7 @@ df.to_csv('data/raw/AAPL_options_eod.csv', index=False)
 Stock prices are needed for OTM% and P&L calculations:
 
 ```python
-from src.stock_downloader import YFinanceDownloader
+from src.downloaders.stock_downloader import YFinanceDownloader
 
 # Initialize downloader
 downloader = YFinanceDownloader()
@@ -126,7 +126,7 @@ data/
 
 **Options data download:**
 ```bash
-python example_download.py
+python example_options_download.py
 ```
 
 **Stock price download:**

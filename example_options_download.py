@@ -7,7 +7,7 @@ This script shows how to:
 3. Perform incremental updates
 """
 
-from src.data_downloader import ThetaDataDownloader
+from src.downloaders.options_downloader import ThetaDataDownloader
 
 
 def main():

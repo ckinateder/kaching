@@ -3,4 +3,4 @@
 data
 venv
 api-thetadata
-src/__pycache__
+src/**/__pycache__

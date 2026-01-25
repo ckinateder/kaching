@@ -7,7 +7,7 @@ options analysis (calculating OTM% and P&L).
 """
 
 from pathlib import Path
-from src.stock_downloader import YFinanceDownloader
+from src.downloaders.stock_downloader import YFinanceDownloader
 
 
 def main():
