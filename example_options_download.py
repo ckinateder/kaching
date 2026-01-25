@@ -41,7 +41,7 @@ def main():
     df_updated = downloader.download_options_eod_data(
         ticker='AAPL',
         start_date='2024-01-15',
-        end_date='2024-01-26',  # Extended range
+        end_date='2024-02-26',  # Extended range
         output_dir='data/raw',
         check_existing=True  # Will only download missing dates
     )
@@ -56,7 +56,10 @@ def main():
     # Display sample of data
     print("\nSample data:")
     print(data.head(10))
-    print(f"\nColumns: {list(data.columns)}")
+
+    # print size of data by row and then by bytes
+    data.info()
+
 
     # Example 3: Full year download (commented out - uncomment to run)
     # print("\n" + "=" * 60)
