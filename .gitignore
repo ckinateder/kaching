@@ -4,3 +4,4 @@ data
 venv
 api-thetadata
 src/**/__pycache__
+CLAUDE.md

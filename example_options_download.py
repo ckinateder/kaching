@@ -8,6 +8,7 @@ This script shows how to:
 """
 
 from src.downloaders.options_downloader import ThetaDataDownloader
+import pandas as pd
 
 
 def main():
@@ -32,11 +33,6 @@ def main():
     df.to_csv(output_path, index=False)
     print(f"\n✓ Saved to {output_path}")
 
-    # Display sample of data
-    print("\nSample data:")
-    print(df.head(10))
-    print(f"\nColumns: {list(df.columns)}")
-
     # Example 2: Incremental update (download additional dates)
     print("\n" + "=" * 60)
     print("Example 2: Incremental update with new dates")
@@ -53,6 +49,14 @@ def main():
     # Save updated data
     df_updated.to_csv(output_path, index=False)
     print(f"\n✓ Updated and saved to {output_path}")
+
+    # display sample of data
+    data = pd.read_csv(output_path)
+
+    # Display sample of data
+    print("\nSample data:")
+    print(data.head(10))
+    print(f"\nColumns: {list(data.columns)}")
 
     # Example 3: Full year download (commented out - uncomment to run)
     # print("\n" + "=" * 60)

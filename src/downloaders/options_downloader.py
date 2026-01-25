@@ -23,6 +23,7 @@ ESSENTIAL_FIELDS = [
     'expiration',
     'strike',
     'right',
+    'osi_contract_id',  # Computed contract ID: {symbol}{expiration}{right}{strike}
 
     # Temporal
     'timestamp',  # This is the quote_date
@@ -188,12 +189,17 @@ class ThetaDataDownloader:
             print(f"\nMerging with existing data ({len(existing_df):,} existing contracts)...")
             result_df = pd.concat([existing_df, result_df], ignore_index=True)
 
-            # Sort by timestamp, expiration, strike and remove any duplicates
-            result_df = result_df.sort_values(['timestamp', 'expiration', 'strike', 'right'])
+            # Remove any duplicates
             result_df = result_df.drop_duplicates(
                 subset=['symbol', 'expiration', 'strike', 'right', 'timestamp'],
                 keep='last'
             )
+
+        # Ensure timestamp column is datetime (for consistent sorting and display)
+        result_df['timestamp'] = pd.to_datetime(result_df['timestamp'], format='ISO8601')
+
+        # Sort by expiration date, quote date (timestamp), strike
+        result_df = result_df.sort_values(['expiration', 'timestamp', 'strike', 'right'])
 
         print(f"\n✓ Download complete!")
         print(f"  Total contracts: {len(result_df):,}")
@@ -240,7 +246,7 @@ class ThetaDataDownloader:
                 return None, requested_dates
 
             # Parse timestamp column to datetime and extract unique dates
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df['timestamp'] = pd.to_datetime(df['timestamp'], format='ISO8601')
             existing_dates = df['timestamp'].dt.date.unique()
             existing_dates_str = [d.strftime('%Y-%m-%d') for d in existing_dates]
 
