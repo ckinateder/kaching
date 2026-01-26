@@ -20,7 +20,8 @@ from .downloader_utils import (
     generate_date_range,
     find_missing_dates,
     create_output_directory,
-    find_contiguous_date_ranges
+    find_contiguous_date_ranges,
+    download_and_save_with_incremental
 )
 
 
@@ -174,6 +175,9 @@ class ThetaDataDownloader:
         # Sort by expiration date, quote date (timestamp), strike, right
         result_df = result_df.sort_values(['expiration', 'timestamp', 'strike', 'right'])
 
+        # remove rows where expiration date is before the start date
+        result_df = result_df[result_df['expiration'] >= start_date]
+
         print(f"\n✓ Download complete!")
         print(f"  Total contracts: {len(result_df):,}")
         print(f"  Date range: {result_df['timestamp'].min()} to {result_df['timestamp'].max()}")
@@ -192,12 +196,8 @@ class ThetaDataDownloader:
         """
         Download options data and save to CSV (with optional incremental update).
 
-        This convenience function orchestrates the full workflow:
-        1. Check for existing CSV (if incremental=True)
-        2. Download missing data only
-        3. Merge with existing data (if any)
-        4. Save to CSV
-        5. Return complete DataFrame
+        Convenience function that orchestrates the full workflow.
+        See download_and_save_with_incremental() for implementation details.
 
         Args:
             ticker: Stock symbol (e.g., 'AAPL')
@@ -213,59 +213,19 @@ class ThetaDataDownloader:
             ValueError: If date format is invalid or end_date < start_date
             Exception: If API requests fail after all retries
         """
-        existing_df = None
-        download_start = start_date
-        download_end = end_date
-
-        if incremental:
-            # Check for existing data
-            existing_df, missing_dates = find_missing_dates(
-                csv_filepath, start_date, end_date,
-                date_column='timestamp',
-                parse_timestamp=True
-            )
-
-            if not missing_dates:
-                print(f"✓ All data already exists for {ticker} ({start_date} to {end_date})")
-                return existing_df
-
-            # Find contiguous ranges to show better progress info
-            missing_ranges = find_contiguous_date_ranges(missing_dates)
-
-            print(f"Found existing data. Need to download {len(missing_ranges)} date range(s) "
-                  f"covering {len(missing_dates)} calendar days.")
-
-            # Download each contiguous range separately
-            new_data_frames = []
-            for range_start, range_end in missing_ranges:
-                print(f"  Downloading range: {range_start} to {range_end}")
-                range_df = self.download_options_eod_data(ticker, range_start, range_end)
-                if not range_df.empty:
-                    new_data_frames.append(range_df)
-
-            # Combine all downloaded data
-            if new_data_frames:
-                new_df = pd.concat(new_data_frames, ignore_index=True)
-            else:
-                new_df = pd.DataFrame(columns=self._get_essential_fields())
-        else:
-            # Non-incremental: download full range
-            new_df = self.download_options_eod_data(ticker, start_date, end_date)
-
-        # Merge if we have existing data
-        if existing_df is not None and not existing_df.empty:
-            print(f"\nMerging with existing data ({len(existing_df):,} existing contracts)...")
-            result_df = self.merge_options_data(existing_df, new_df)
-        else:
-            result_df = new_df
-
-        # Save to CSV
-        print(f"\nSaving to {csv_filepath}...")
-        create_output_directory(csv_filepath)
-        result_df.to_csv(csv_filepath, index=False)
-        print(f"✓ Saved {len(result_df):,} contracts")
-
-        return result_df
+        return download_and_save_with_incremental(
+            ticker=ticker,
+            start_date=start_date,
+            end_date=end_date,
+            csv_filepath=csv_filepath,
+            incremental=incremental,
+            download_func=self.download_options_eod_data,
+            merge_func=self.merge_options_data,
+            date_column='timestamp',
+            parse_timestamp=True,
+            data_type_name='contracts',
+            essential_fields=self._get_essential_fields()
+        )
 
     def _make_api_request(
         self,
@@ -360,35 +320,6 @@ class ThetaDataDownloader:
             return False
 
         return True
-
-    @staticmethod
-    def find_missing_dates(
-        csv_filepath: str,
-        start_date: str,
-        end_date: str
-    ) -> Tuple[Optional[pd.DataFrame], list]:
-        """
-        Check existing CSV and identify missing dates.
-
-        Wrapper around downloader_utils.find_missing_dates() for options data.
-
-        Args:
-            csv_filepath: Full path to CSV file (e.g., 'data/raw/AAPL_options_eod.csv')
-            start_date: Desired start date 'YYYY-MM-DD'
-            end_date: Desired end date 'YYYY-MM-DD'
-
-        Returns:
-            Tuple of (existing_dataframe, list_of_missing_dates)
-            If no existing file: (None, all_dates_in_range)
-            If all dates exist: (existing_df, [])
-        """
-        return find_missing_dates(
-            csv_filepath,
-            start_date,
-            end_date,
-            date_column='timestamp',
-            parse_timestamp=True
-        )
 
     @staticmethod
     def merge_options_data(

@@ -11,6 +11,7 @@ This script demonstrates how to:
 
 from pathlib import Path
 from src.downloaders.stock_downloader import YFinanceDownloader
+from src.downloaders import find_missing_dates
 
 
 def main():
@@ -90,11 +91,13 @@ def main():
     print("Example 5: Manual control with helper methods")
     print("=" * 60)
 
-    # Check what dates are missing
-    existing_df, missing_dates = YFinanceDownloader.find_missing_dates(
+    # Check what dates are missing using the utility function directly
+    existing_df, missing_dates = find_missing_dates(
         csv_filepath='data/raw/AAPL_stock_prices.csv',
         start_date='2024-01-01',
-        end_date='2024-03-31'
+        end_date='2024-03-31',
+        date_column='date',
+        parse_timestamp=False
     )
 
     print(f"Found {len(missing_dates)} missing dates")

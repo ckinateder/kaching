@@ -169,3 +169,99 @@ def find_contiguous_date_ranges(dates: list) -> list:
     ))
 
     return ranges
+
+
+def download_and_save_with_incremental(
+    ticker: str,
+    start_date: str,
+    end_date: str,
+    csv_filepath: str,
+    incremental: bool,
+    download_func: callable,
+    merge_func: callable,
+    date_column: str,
+    parse_timestamp: bool,
+    data_type_name: str,
+    essential_fields: list
+) -> pd.DataFrame:
+    """
+    Generic orchestration function for incremental downloads with CSV persistence.
+
+    Handles the full workflow:
+    1. Check for existing CSV (if incremental=True)
+    2. Find contiguous ranges of missing dates
+    3. Download each range
+    4. Merge with existing data
+    5. Save to CSV
+    6. Return complete DataFrame
+
+    This function eliminates code duplication between stock and options downloaders
+    by accepting function callbacks for download and merge operations.
+
+    Args:
+        ticker: Stock symbol (e.g., 'AAPL')
+        start_date: Start date 'YYYY-MM-DD'
+        end_date: End date 'YYYY-MM-DD'
+        csv_filepath: Full path to save CSV
+        incremental: If True, check existing CSV and only download missing dates
+        download_func: Function to download data (signature: func(ticker, start, end) -> DataFrame)
+        merge_func: Function to merge data (signature: func(existing_df, new_df) -> DataFrame)
+        date_column: Column name containing dates in CSV ('date' or 'timestamp')
+        parse_timestamp: Whether to parse datetime column for date extraction
+        data_type_name: Name for progress messages ('trading days' or 'contracts')
+        essential_fields: List of column names for empty DataFrame fallback
+
+    Returns:
+        Complete DataFrame (existing + new data)
+    """
+    existing_df = None
+
+    if incremental:
+        # Check for existing data
+        existing_df, missing_dates = find_missing_dates(
+            csv_filepath, start_date, end_date,
+            date_column=date_column,
+            parse_timestamp=parse_timestamp
+        )
+
+        if not missing_dates:
+            print(f"✓ All data already exists for {ticker} ({start_date} to {end_date})")
+            return existing_df
+
+        # Find contiguous ranges of missing dates
+        missing_ranges = find_contiguous_date_ranges(missing_dates)
+
+        print(f"Found existing data. Need to download {len(missing_ranges)} date range(s) "
+              f"covering {len(missing_dates)} calendar days.")
+
+        # Download each contiguous range separately
+        new_data_frames = []
+        for range_start, range_end in missing_ranges:
+            print(f"  Downloading range: {range_start} to {range_end}")
+            range_df = download_func(ticker, range_start, range_end)
+            if not range_df.empty:
+                new_data_frames.append(range_df)
+
+        # Combine all downloaded data
+        if new_data_frames:
+            new_df = pd.concat(new_data_frames, ignore_index=True)
+        else:
+            new_df = pd.DataFrame(columns=essential_fields)
+    else:
+        # Non-incremental: download full range
+        new_df = download_func(ticker, start_date, end_date)
+
+    # Merge if we have existing data
+    if existing_df is not None and not existing_df.empty:
+        print(f"\nMerging with existing data ({len(existing_df):,} existing {data_type_name})...")
+        result_df = merge_func(existing_df, new_df)
+    else:
+        result_df = new_df
+
+    # Save to CSV
+    print(f"\nSaving to {csv_filepath}...")
+    create_output_directory(csv_filepath)
+    result_df.to_csv(csv_filepath, index=False)
+    print(f"✓ Saved {len(result_df):,} {data_type_name}")
+
+    return result_df
