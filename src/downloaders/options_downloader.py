@@ -15,6 +15,14 @@ import pandas as pd
 import requests
 from requests.exceptions import RequestException, Timeout, ConnectionError
 
+from .downloader_utils import (
+    validate_date_range,
+    generate_date_range,
+    find_missing_dates,
+    create_output_directory,
+    find_contiguous_date_ranges
+)
+
 
 # Essential fields to keep (drop unnecessary columns to minimize data redundancy)
 ESSENTIAL_FIELDS = [
@@ -73,22 +81,20 @@ class ThetaDataDownloader:
         self,
         ticker: str,
         start_date: str,
-        end_date: str,
-        output_dir: str = 'data/raw',
-        check_existing: bool = True
+        end_date: str
     ) -> pd.DataFrame:
         """
         Download EOD options data with Greeks for all expirations.
 
+        Pure download function - downloads all dates in range without checking files.
+        For incremental downloads, use download_and_save_options_eod_data() instead.
+
         Downloads data day-by-day (API constraint for expiration=*) with progress logging.
-        Supports incremental downloads by checking existing CSV files.
 
         Args:
             ticker: Stock symbol (e.g., 'AAPL')
             start_date: Start date in 'YYYY-MM-DD' format
             end_date: End date in 'YYYY-MM-DD' format (inclusive)
-            output_dir: Directory to check for existing CSV (for incremental download)
-            check_existing: If True, check existing CSV and only download missing dates
 
         Returns:
             pd.DataFrame with options data for all dates in range
@@ -98,41 +104,19 @@ class ThetaDataDownloader:
             Exception: If API requests fail after all retries
         """
         # Validate date inputs
-        try:
-            start_dt = pd.to_datetime(start_date)
-            end_dt = pd.to_datetime(end_date)
-        except Exception as e:
-            raise ValueError(f"Invalid date format. Expected 'YYYY-MM-DD': {e}")
-
-        if end_dt < start_dt:
-            raise ValueError(f"end_date ({end_date}) must be >= start_date ({start_date})")
+        validate_date_range(start_date, end_date)
 
         # Generate full date range
-        all_dates = self._generate_date_range(start_date, end_date)
-
-        # Check for existing data and identify missing dates
-        existing_df = None
-        missing_dates = all_dates
-
-        if check_existing:
-            existing_df, missing_dates = self._check_existing_data(
-                ticker, start_date, end_date, output_dir
-            )
-
-            if not missing_dates:
-                print(f"✓ All data already exists for {ticker} ({start_date} to {end_date})")
-                return existing_df
-
-            print(f"Found existing data. Need to download {len(missing_dates)} missing dates.")
+        all_dates = generate_date_range(start_date, end_date)
 
         # Download data day by day
         all_data = []
-        total_days = len(missing_dates)
+        total_days = len(all_dates)
         total_contracts = 0
 
         print(f"\nDownloading {ticker} options data for {total_days} days...")
 
-        for i, date in enumerate(missing_dates, 1):
+        for i, date in enumerate(all_dates, 1):
             # Format date as YYYYMMDD for API
             date_str = pd.to_datetime(date).strftime('%Y%m%d')
 
@@ -184,21 +168,10 @@ class ThetaDataDownloader:
 
         result_df = pd.concat(all_data, ignore_index=True)
 
-        # If we have existing data, merge it
-        if existing_df is not None and not existing_df.empty:
-            print(f"\nMerging with existing data ({len(existing_df):,} existing contracts)...")
-            result_df = pd.concat([existing_df, result_df], ignore_index=True)
-
-            # Remove any duplicates
-            result_df = result_df.drop_duplicates(
-                subset=['symbol', 'expiration', 'strike', 'right', 'timestamp'],
-                keep='last'
-            )
-
         # Ensure timestamp column is datetime (for consistent sorting and display)
         result_df['timestamp'] = pd.to_datetime(result_df['timestamp'], format='ISO8601')
 
-        # Sort by expiration date, quote date (timestamp), strike
+        # Sort by expiration date, quote date (timestamp), strike, right
         result_df = result_df.sort_values(['expiration', 'timestamp', 'strike', 'right'])
 
         print(f"\n✓ Download complete!")
@@ -208,57 +181,91 @@ class ThetaDataDownloader:
 
         return result_df
 
-    def _check_existing_data(
+    def download_and_save_options_eod_data(
         self,
         ticker: str,
         start_date: str,
         end_date: str,
-        output_dir: str
-    ) -> Tuple[Optional[pd.DataFrame], list]:
+        csv_filepath: str,
+        incremental: bool = True
+    ) -> pd.DataFrame:
         """
-        Check for existing CSV and identify missing dates.
+        Download options data and save to CSV (with optional incremental update).
+
+        This convenience function orchestrates the full workflow:
+        1. Check for existing CSV (if incremental=True)
+        2. Download missing data only
+        3. Merge with existing data (if any)
+        4. Save to CSV
+        5. Return complete DataFrame
 
         Args:
-            ticker: Stock symbol
-            start_date: Desired start date 'YYYY-MM-DD'
-            end_date: Desired end date 'YYYY-MM-DD'
-            output_dir: Directory where CSV might exist
+            ticker: Stock symbol (e.g., 'AAPL')
+            start_date: Start date 'YYYY-MM-DD'
+            end_date: End date 'YYYY-MM-DD'
+            csv_filepath: Full path to save CSV (e.g., 'data/raw/AAPL_options_eod.csv')
+            incremental: If True, check existing CSV and only download missing dates
 
         Returns:
-            Tuple of (existing_dataframe, list_of_missing_dates)
-            If no existing file, returns (None, all_dates_in_range)
+            Complete DataFrame (existing + new data)
+
+        Raises:
+            ValueError: If date format is invalid or end_date < start_date
+            Exception: If API requests fail after all retries
         """
-        # Build expected CSV path
-        csv_path = Path(output_dir) / f"{ticker}_options_eod.csv"
+        existing_df = None
+        download_start = start_date
+        download_end = end_date
 
-        # Generate requested date range
-        requested_dates = self._generate_date_range(start_date, end_date)
+        if incremental:
+            # Check for existing data
+            existing_df, missing_dates = find_missing_dates(
+                csv_filepath, start_date, end_date,
+                date_column='timestamp',
+                parse_timestamp=True
+            )
 
-        # If CSV doesn't exist, all dates are missing
-        if not csv_path.exists():
-            return None, requested_dates
+            if not missing_dates:
+                print(f"✓ All data already exists for {ticker} ({start_date} to {end_date})")
+                return existing_df
 
-        try:
-            # Load existing CSV
-            df = pd.read_csv(csv_path)
+            # Find contiguous ranges to show better progress info
+            missing_ranges = find_contiguous_date_ranges(missing_dates)
 
-            if df.empty:
-                return None, requested_dates
+            print(f"Found existing data. Need to download {len(missing_ranges)} date range(s) "
+                  f"covering {len(missing_dates)} calendar days.")
 
-            # Parse timestamp column to datetime and extract unique dates
-            df['timestamp'] = pd.to_datetime(df['timestamp'], format='ISO8601')
-            existing_dates = df['timestamp'].dt.date.unique()
-            existing_dates_str = [d.strftime('%Y-%m-%d') for d in existing_dates]
+            # Download each contiguous range separately
+            new_data_frames = []
+            for range_start, range_end in missing_ranges:
+                print(f"  Downloading range: {range_start} to {range_end}")
+                range_df = self.download_options_eod_data(ticker, range_start, range_end)
+                if not range_df.empty:
+                    new_data_frames.append(range_df)
 
-            # Find missing dates
-            missing_dates = [d for d in requested_dates if d not in existing_dates_str]
+            # Combine all downloaded data
+            if new_data_frames:
+                new_df = pd.concat(new_data_frames, ignore_index=True)
+            else:
+                new_df = pd.DataFrame(columns=self._get_essential_fields())
+        else:
+            # Non-incremental: download full range
+            new_df = self.download_options_eod_data(ticker, start_date, end_date)
 
-            return df, missing_dates
+        # Merge if we have existing data
+        if existing_df is not None and not existing_df.empty:
+            print(f"\nMerging with existing data ({len(existing_df):,} existing contracts)...")
+            result_df = self.merge_options_data(existing_df, new_df)
+        else:
+            result_df = new_df
 
-        except Exception as e:
-            print(f"⚠ Warning: Could not read existing CSV: {e}")
-            print(f"  Proceeding as if no existing data...")
-            return None, requested_dates
+        # Save to CSV
+        print(f"\nSaving to {csv_filepath}...")
+        create_output_directory(csv_filepath)
+        result_df.to_csv(csv_filepath, index=False)
+        print(f"✓ Saved {len(result_df):,} contracts")
+
+        return result_df
 
     def _make_api_request(
         self,
@@ -323,21 +330,6 @@ class ThetaDataDownloader:
         return ESSENTIAL_FIELDS
 
     @staticmethod
-    def _generate_date_range(start_date: str, end_date: str) -> list:
-        """
-        Generate list of dates in 'YYYY-MM-DD' format.
-
-        Args:
-            start_date: Start date 'YYYY-MM-DD'
-            end_date: End date 'YYYY-MM-DD'
-
-        Returns:
-            List of date strings
-        """
-        dates = pd.date_range(start=start_date, end=end_date, freq='D')
-        return [d.strftime('%Y-%m-%d') for d in dates]
-
-    @staticmethod
     def _validate_data(df: pd.DataFrame) -> bool:
         """
         Perform basic validation on downloaded data.
@@ -368,3 +360,68 @@ class ThetaDataDownloader:
             return False
 
         return True
+
+    @staticmethod
+    def find_missing_dates(
+        csv_filepath: str,
+        start_date: str,
+        end_date: str
+    ) -> Tuple[Optional[pd.DataFrame], list]:
+        """
+        Check existing CSV and identify missing dates.
+
+        Wrapper around downloader_utils.find_missing_dates() for options data.
+
+        Args:
+            csv_filepath: Full path to CSV file (e.g., 'data/raw/AAPL_options_eod.csv')
+            start_date: Desired start date 'YYYY-MM-DD'
+            end_date: Desired end date 'YYYY-MM-DD'
+
+        Returns:
+            Tuple of (existing_dataframe, list_of_missing_dates)
+            If no existing file: (None, all_dates_in_range)
+            If all dates exist: (existing_df, [])
+        """
+        return find_missing_dates(
+            csv_filepath,
+            start_date,
+            end_date,
+            date_column='timestamp',
+            parse_timestamp=True
+        )
+
+    @staticmethod
+    def merge_options_data(
+        existing_df: pd.DataFrame,
+        new_df: pd.DataFrame
+    ) -> pd.DataFrame:
+        """
+        Merge and deduplicate options data.
+
+        Combines existing and new options data, removes duplicates based on
+        contract identification (symbol, expiration, strike, right, timestamp),
+        and returns sorted DataFrame.
+
+        Args:
+            existing_df: Existing options DataFrame
+            new_df: New options DataFrame to merge
+
+        Returns:
+            Merged and deduplicated DataFrame, sorted by expiration, timestamp, strike, right
+        """
+        # Concatenate DataFrames
+        result_df = pd.concat([existing_df, new_df], ignore_index=True)
+
+        # Remove duplicates (keep most recent)
+        result_df = result_df.drop_duplicates(
+            subset=['symbol', 'expiration', 'strike', 'right', 'timestamp'],
+            keep='last'
+        )
+
+        # Ensure timestamp is datetime for consistent sorting
+        result_df['timestamp'] = pd.to_datetime(result_df['timestamp'], format='ISO8601')
+
+        # Sort by expiration date, quote date (timestamp), strike, right
+        result_df = result_df.sort_values(['expiration', 'timestamp', 'strike', 'right'])
+
+        return result_df

@@ -11,6 +11,7 @@ import pandas as pd
 
 from .options_downloader import ThetaDataDownloader
 from .stock_downloader import YFinanceDownloader
+from .downloader_utils import validate_date_range
 
 
 def download_full_dataset(
@@ -57,14 +58,7 @@ def download_full_dataset(
         #  'open', 'high', 'low', 'volume', 'adjusted_close', ...]
     """
     # Validate date inputs
-    try:
-        start_dt = pd.to_datetime(start_date)
-        end_dt = pd.to_datetime(end_date)
-    except Exception as e:
-        raise ValueError(f"Invalid date format. Expected 'YYYY-MM-DD': {e}")
-
-    if end_dt < start_dt:
-        raise ValueError(f"end_date ({end_date}) must be >= start_date ({start_date})")
+    validate_date_range(start_date, end_date)
 
     # Initialize downloaders
     options_downloader = ThetaDataDownloader()
@@ -80,8 +74,6 @@ def download_full_dataset(
         ticker=ticker,
         start_date=start_date,
         end_date=end_date,
-        output_dir=output_dir,
-        check_existing=check_existing
     )
 
     # Download stock prices
@@ -89,8 +81,6 @@ def download_full_dataset(
         ticker=ticker,
         start_date=start_date,
         end_date=end_date,
-        output_dir=output_dir,
-        check_existing=check_existing
     )
 
     # Convert both to datetime for proper joining

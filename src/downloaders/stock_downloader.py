@@ -12,6 +12,14 @@ from pathlib import Path
 import pandas as pd
 import yfinance as yf
 
+from .downloader_utils import (
+    validate_date_range,
+    generate_date_range,
+    find_missing_dates,
+    create_output_directory,
+    find_contiguous_date_ranges
+)
+
 
 # Essential fields to keep for stock price data
 STOCK_PRICE_FIELDS = [
@@ -47,23 +55,21 @@ class YFinanceDownloader:
         self,
         ticker: str,
         start_date: str,
-        end_date: str,
-        output_dir: str = 'data/raw',
-        check_existing: bool = True
+        end_date: str
     ) -> pd.DataFrame:
         """
         Download daily stock prices for a ticker.
 
+        Pure download function - downloads all dates in range without checking files.
+        For incremental downloads, use download_and_save_stock_prices() instead.
+
         Downloads stock price data in a single bulk API call (much faster than
-        day-by-day downloads). Supports incremental downloads by checking existing
-        CSV files.
+        day-by-day downloads).
 
         Args:
             ticker: Stock symbol (e.g., 'AAPL')
             start_date: Start date in 'YYYY-MM-DD' format
             end_date: End date in 'YYYY-MM-DD' format (inclusive)
-            output_dir: Directory to check for existing CSV (for incremental download)
-            check_existing: If True, check existing CSV and only download missing dates
 
         Returns:
             pd.DataFrame with daily stock prices
@@ -73,59 +79,16 @@ class YFinanceDownloader:
             Exception: If API requests fail after all retries
         """
         # Validate date inputs
-        try:
-            start_dt = pd.to_datetime(start_date)
-            end_dt = pd.to_datetime(end_date)
-        except Exception as e:
-            raise ValueError(f"Invalid date format. Expected 'YYYY-MM-DD': {e}")
-
-        if end_dt < start_dt:
-            raise ValueError(f"end_date ({end_date}) must be >= start_date ({start_date})")
-
-        # Check for existing data and identify missing dates
-        existing_df = None
-        download_start = start_date
-        download_end = end_date
-
-        if check_existing:
-            existing_df, missing_dates = self._check_existing_data(
-                ticker, start_date, end_date, output_dir
-            )
-
-            if not missing_dates:
-                print(f"✓ All data already exists for {ticker} ({start_date} to {end_date})")
-                return existing_df
-
-            print(f"Found existing data. Need to download {len(missing_dates)} missing dates.")
-
-            # Find min/max of missing dates to create contiguous range
-            download_start = min(missing_dates)
-            download_end = max(missing_dates)
-
-            print(f"Downloading missing range: {download_start} to {download_end}")
+        validate_date_range(start_date, end_date)
 
         # Download stock prices
-        print(f"\nDownloading {ticker} stock prices from {download_start} to {download_end}...")
+        print(f"\nDownloading {ticker} stock prices from {start_date} to {end_date}...")
 
-        new_df = self._download_with_retry(ticker, download_start, download_end)
+        result_df = self._download_with_retry(ticker, start_date, end_date)
 
-        if new_df.empty:
+        if result_df.empty:
             print(f"\n⚠ No data downloaded for {ticker}")
-            if existing_df is not None and not existing_df.empty:
-                return existing_df
             return pd.DataFrame(columns=self._get_essential_fields())
-
-        # If we had existing data and did incremental download, filter to only missing dates
-        if check_existing and existing_df is not None:
-            # Filter new data to only actually missing dates
-            new_df = new_df[new_df['date'].isin(missing_dates)]
-
-            # Merge with existing
-            result_df = pd.concat([existing_df, new_df], ignore_index=True)
-            result_df = result_df.sort_values('date')
-            result_df = result_df.drop_duplicates(['symbol', 'date'], keep='last')
-        else:
-            result_df = new_df
 
         print(f"\n✓ Download complete!")
         print(f"  Trading days: {len(result_df):,}")
@@ -134,55 +97,91 @@ class YFinanceDownloader:
 
         return result_df
 
-    def _check_existing_data(
+    def download_and_save_stock_prices(
         self,
         ticker: str,
         start_date: str,
         end_date: str,
-        output_dir: str
-    ) -> Tuple[Optional[pd.DataFrame], list]:
+        csv_filepath: str,
+        incremental: bool = True
+    ) -> pd.DataFrame:
         """
-        Check for existing CSV and identify missing dates.
+        Download stock prices and save to CSV (with optional incremental update).
+
+        This convenience function orchestrates the full workflow:
+        1. Check for existing CSV (if incremental=True)
+        2. Download missing data only
+        3. Merge with existing data (if any)
+        4. Save to CSV
+        5. Return complete DataFrame
 
         Args:
-            ticker: Stock symbol
-            start_date: Desired start date 'YYYY-MM-DD'
-            end_date: Desired end date 'YYYY-MM-DD'
-            output_dir: Directory where CSV might exist
+            ticker: Stock symbol (e.g., 'AAPL')
+            start_date: Start date 'YYYY-MM-DD'
+            end_date: End date 'YYYY-MM-DD'
+            csv_filepath: Full path to save CSV (e.g., 'data/raw/AAPL_stock_prices.csv')
+            incremental: If True, check existing CSV and only download missing dates
 
         Returns:
-            Tuple of (existing_dataframe, list_of_missing_dates)
-            If no existing file, returns (None, all_dates_in_range)
+            Complete DataFrame (existing + new data)
+
+        Raises:
+            ValueError: If date format is invalid, end_date < start_date, or invalid ticker
+            Exception: If API requests fail after all retries
         """
-        # Build expected CSV path
-        csv_path = Path(output_dir) / f"{ticker}_stock_prices.csv"
+        existing_df = None
+        download_start = start_date
+        download_end = end_date
 
-        # Generate requested date range (all calendar days)
-        requested_dates = self._generate_date_range(start_date, end_date)
+        if incremental:
+            # Check for existing data
+            existing_df, missing_dates = find_missing_dates(
+                csv_filepath, start_date, end_date,
+                date_column='date',
+                parse_timestamp=False
+            )
 
-        # If CSV doesn't exist, all dates are missing
-        if not csv_path.exists():
-            return None, requested_dates
+            if not missing_dates:
+                print(f"✓ All data already exists for {ticker} ({start_date} to {end_date})")
+                return existing_df
 
-        try:
-            # Load existing CSV
-            df = pd.read_csv(csv_path)
+            # Find contiguous ranges of missing dates to optimize downloads
+            missing_ranges = find_contiguous_date_ranges(missing_dates)
 
-            if df.empty:
-                return None, requested_dates
+            print(f"Found existing data. Need to download {len(missing_ranges)} date range(s) "
+                  f"covering {len(missing_dates)} calendar days.")
 
-            # Get existing dates (already in YYYY-MM-DD format)
-            existing_dates = df['date'].unique().tolist()
+            # Download each contiguous range separately
+            new_data_frames = []
+            for range_start, range_end in missing_ranges:
+                print(f"  Downloading range: {range_start} to {range_end}")
+                range_df = self.download_stock_prices(ticker, range_start, range_end)
+                if not range_df.empty:
+                    new_data_frames.append(range_df)
 
-            # Find missing dates
-            missing_dates = [d for d in requested_dates if d not in existing_dates]
+            # Combine all downloaded data
+            if new_data_frames:
+                new_df = pd.concat(new_data_frames, ignore_index=True)
+            else:
+                new_df = pd.DataFrame(columns=self._get_essential_fields())
 
-            return df, missing_dates
+            # Merge with existing if we have it
+            if existing_df is not None and not existing_df.empty:
+                print(f"\nMerging with existing data ({len(existing_df):,} existing trading days)...")
+                result_df = self.merge_stock_data(existing_df, new_df)
+            else:
+                result_df = new_df
+        else:
+            # Non-incremental: download full range
+            result_df = self.download_stock_prices(ticker, start_date, end_date)
 
-        except Exception as e:
-            print(f"⚠ Warning: Could not read existing CSV: {e}")
-            print(f"  Proceeding as if no existing data...")
-            return None, requested_dates
+        # Save to CSV
+        print(f"\nSaving to {csv_filepath}...")
+        create_output_directory(csv_filepath)
+        result_df.to_csv(csv_filepath, index=False)
+        print(f"✓ Saved {len(result_df):,} trading days")
+
+        return result_df
 
     def _download_with_retry(
         self,
@@ -340,16 +339,59 @@ class YFinanceDownloader:
         return STOCK_PRICE_FIELDS
 
     @staticmethod
-    def _generate_date_range(start_date: str, end_date: str) -> list:
+    def find_missing_dates(
+        csv_filepath: str,
+        start_date: str,
+        end_date: str
+    ) -> Tuple[Optional[pd.DataFrame], list]:
         """
-        Generate list of dates in 'YYYY-MM-DD' format.
+        Check existing CSV and identify missing dates.
+
+        Wrapper around downloader_utils.find_missing_dates() for stock data.
 
         Args:
-            start_date: Start date 'YYYY-MM-DD'
-            end_date: End date 'YYYY-MM-DD'
+            csv_filepath: Full path to CSV file (e.g., 'data/raw/AAPL_stock_prices.csv')
+            start_date: Desired start date 'YYYY-MM-DD'
+            end_date: Desired end date 'YYYY-MM-DD'
 
         Returns:
-            List of date strings
+            Tuple of (existing_dataframe, list_of_missing_dates)
+            If no existing file: (None, all_dates_in_range)
+            If all dates exist: (existing_df, [])
         """
-        dates = pd.date_range(start=start_date, end=end_date, freq='D')
-        return [d.strftime('%Y-%m-%d') for d in dates]
+        return find_missing_dates(
+            csv_filepath,
+            start_date,
+            end_date,
+            date_column='date',
+            parse_timestamp=False
+        )
+
+    @staticmethod
+    def merge_stock_data(
+        existing_df: pd.DataFrame,
+        new_df: pd.DataFrame
+    ) -> pd.DataFrame:
+        """
+        Merge and deduplicate stock data.
+
+        Combines existing and new stock price data, removes duplicates based on
+        symbol and date, and returns sorted DataFrame.
+
+        Args:
+            existing_df: Existing stock prices DataFrame
+            new_df: New stock prices DataFrame to merge
+
+        Returns:
+            Merged and deduplicated DataFrame, sorted by date
+        """
+        # Concatenate DataFrames
+        result_df = pd.concat([existing_df, new_df], ignore_index=True)
+
+        # Sort by date
+        result_df = result_df.sort_values('date')
+
+        # Remove duplicates (keep most recent)
+        result_df = result_df.drop_duplicates(['symbol', 'date'], keep='last')
+
+        return result_df

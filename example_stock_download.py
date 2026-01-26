@@ -2,8 +2,11 @@
 """
 Example: Download stock price data using YFinanceDownloader
 
-This script demonstrates how to download daily stock prices for use in
-options analysis (calculating OTM% and P&L).
+This script demonstrates how to:
+1. Download stock prices with automatic save (simple workflow)
+2. Perform incremental updates
+3. Use download-only for quick analysis (no save)
+4. Use manual control with helper methods (advanced)
 """
 
 from pathlib import Path
@@ -16,48 +19,37 @@ def main():
     # Initialize downloader
     downloader = YFinanceDownloader()
 
-    # Create output directory if it doesn't exist
-    output_dir = Path('data/raw')
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Example 1: Download 1 month of AAPL stock prices
+    # Example 1: Simple download with auto-save
     print("=" * 60)
     print("Example 1: Download AAPL stock prices (1 month)")
     print("=" * 60)
 
-    df_aapl = downloader.download_stock_prices(
+    df_aapl = downloader.download_and_save_stock_prices(
         ticker='AAPL',
         start_date='2024-01-01',
         end_date='2024-01-31',
-        output_dir=str(output_dir),
-        check_existing=True
+        csv_filepath='data/raw/AAPL_stock_prices.csv',
+        incremental=True
     )
 
-    # Save to CSV
-    output_path = output_dir / 'AAPL_stock_prices.csv'
-    df_aapl.to_csv(output_path, index=False)
-    print(f"\nSaved to: {output_path}")
+    print(f"\nDataFrame shape: {df_aapl.shape}")
     print(f"Columns: {list(df_aapl.columns)}")
     print(f"\nFirst few rows:")
     print(df_aapl.head())
 
-    # Example 2: Download full year of SCHW stock prices
+    # Example 2: Download full year with auto-save
     print("\n" + "=" * 60)
     print("Example 2: Download SCHW stock prices (full year)")
     print("=" * 60)
 
-    df_schw = downloader.download_stock_prices(
+    df_schw = downloader.download_and_save_stock_prices(
         ticker='SCHW',
         start_date='2024-01-01',
         end_date='2024-12-31',
-        output_dir=str(output_dir),
-        check_existing=True
+        csv_filepath='data/raw/SCHW_stock_prices.csv',
+        incremental=True
     )
 
-    # Save to CSV
-    output_path = output_dir / 'SCHW_stock_prices.csv'
-    df_schw.to_csv(output_path, index=False)
-    print(f"\nSaved to: {output_path}")
     print(f"\nSummary statistics:")
     print(df_schw[['close']].describe())
 
@@ -66,19 +58,67 @@ def main():
     print("Example 3: Incremental download (extend AAPL to Feb)")
     print("=" * 60)
 
-    df_aapl_extended = downloader.download_stock_prices(
+    df_aapl_extended = downloader.download_and_save_stock_prices(
         ticker='AAPL',
         start_date='2024-01-01',
         end_date='2024-02-29',  # Extend into February
-        output_dir=str(output_dir),
-        check_existing=True  # Will only download missing dates
+        csv_filepath='data/raw/AAPL_stock_prices.csv',
+        incremental=True  # Will only download missing dates
     )
 
-    # Save updated data
-    output_path = output_dir / 'AAPL_stock_prices.csv'
-    df_aapl_extended.to_csv(output_path, index=False)
-    print(f"\nSaved extended data to: {output_path}")
-    print(f"Total trading days: {len(df_aapl_extended)}")
+    print(f"\nTotal trading days: {len(df_aapl_extended)}")
+
+    # Example 4: Download-only (no save) for quick analysis
+    print("\n" + "=" * 60)
+    print("Example 4: Download without saving (analysis only)")
+    print("=" * 60)
+
+    df_analysis = downloader.download_stock_prices(
+        ticker='MSFT',
+        start_date='2024-01-01',
+        end_date='2024-01-31'
+    )
+
+    print(f"\nMSFT January 2024 Analysis:")
+    print(f"  Trading days: {len(df_analysis)}")
+    print(f"  Average close: ${df_analysis['close'].mean():.2f}")
+    print(f"  Price range: ${df_analysis['close'].min():.2f} - ${df_analysis['close'].max():.2f}")
+    print(f"  Total volume: {df_analysis['volume'].sum():,}")
+
+    # Example 5: Manual control (advanced usage)
+    print("\n" + "=" * 60)
+    print("Example 5: Manual control with helper methods")
+    print("=" * 60)
+
+    # Check what dates are missing
+    existing_df, missing_dates = YFinanceDownloader.find_missing_dates(
+        csv_filepath='data/raw/AAPL_stock_prices.csv',
+        start_date='2024-01-01',
+        end_date='2024-03-31'
+    )
+
+    print(f"Found {len(missing_dates)} missing dates")
+
+    if missing_dates:
+        # Download only the missing data
+        print(f"Downloading missing dates: {missing_dates[0]} to {missing_dates[-1]}")
+        new_df = downloader.download_stock_prices(
+            ticker='AAPL',
+            start_date=missing_dates[0],
+            end_date=missing_dates[-1]
+        )
+
+        # Filter to only actually missing dates (removes weekends/holidays)
+        new_df = new_df[new_df['date'].isin(missing_dates)]
+
+        # Merge with existing data
+        complete_df = YFinanceDownloader.merge_stock_data(existing_df, new_df)
+
+        # Save manually
+        complete_df.to_csv('data/raw/AAPL_stock_prices.csv', index=False)
+        print(f"✓ Merged and saved {len(complete_df):,} total trading days")
+    else:
+        print("No missing dates - all data already exists")
 
     print("\n" + "=" * 60)
     print("All examples completed!")
