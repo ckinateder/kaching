@@ -90,11 +90,11 @@ def main():
 
     df_analysis = downloader.download_options_eod_data(
         ticker='MSFT',
-        start_date='2024-01-15',
-        end_date='2024-01-15'
+        start_date='2024-01-02',
+        end_date='2024-01-02'
     )
 
-    print(f"\nAnalyzing {len(df_analysis):,} MSFT contracts for 2024-01-15:")
+    print(f"\nAnalyzing {len(df_analysis):,} MSFT contracts for 2024-01-02:")
     print(f"  Unique expirations: {df_analysis['expiration'].nunique()}")
     print(f"  Strike range: ${df_analysis['strike'].min():.2f} - ${df_analysis['strike'].max():.2f}")
     print(f"  Average implied vol: {df_analysis['implied_vol'].mean():.2%}")

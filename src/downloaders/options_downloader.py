@@ -409,8 +409,21 @@ class ThetaDataDownloader:
         Returns:
             Merged and deduplicated DataFrame, sorted by expiration, timestamp, strike, right
         """
-        # Concatenate DataFrames
-        result_df = pd.concat([existing_df, new_df], ignore_index=True)
+        # Handle empty DataFrames to avoid FutureWarning
+        if existing_df.empty and new_df.empty:
+            # Both empty - return empty DataFrame with expected columns
+            result_df = pd.DataFrame(columns=existing_df.columns if not existing_df.columns.empty else new_df.columns)
+        elif existing_df.empty:
+            result_df = new_df.copy()
+        elif new_df.empty:
+            result_df = existing_df.copy()
+        else:
+            # Concatenate DataFrames
+            result_df = pd.concat([existing_df, new_df], ignore_index=True)
+
+        # Early return if result is empty
+        if result_df.empty:
+            return result_df
 
         # Remove duplicates (keep most recent)
         result_df = result_df.drop_duplicates(
