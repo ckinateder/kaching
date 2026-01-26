@@ -100,17 +100,21 @@ def download_full_dataset(
     # add "underlying_" prefix to stock_df columns
     stock_df.columns = [f'underlying_{col}' for col in stock_df.columns]
 
+    # Extract date part for matching (same calendar day, regardless of time)
+    options_df['timestamp_date'] = options_df['timestamp'].dt.date
+    stock_df['underlying_date_date'] = stock_df['underlying_date'].dt.date
 
     # Left join: preserve all options data, add stock prices where available
+    # Match on same calendar day (options timestamp and stock date)
     combined_df = options_df.merge(
         stock_df,
-        left_on='timestamp',
-        right_on='underlying_date',
+        left_on='timestamp_date',
+        right_on='underlying_date_date',
         how='left',
     )
 
-    # drop underlying_date column
-    combined_df = combined_df.drop(columns=['underlying_date', 'underlying_symbol'])
+    # Clean up: drop temporary date columns and stock identifier columns
+    combined_df = combined_df.drop(columns=['timestamp_date', 'underlying_date_date', 'underlying_symbol'])
 
     # Round price columns to 2 decimal places
     price_cols = ['underlying_open', 'underlying_high', 'underlying_low', 'underlying_close']
