@@ -5,7 +5,7 @@ This module provides a single function to download both options data and stock p
 for building a complete dataset over a specified date range.
 """
 
-from typing import Optional, Tuple
+from typing import Optional
 from pathlib import Path
 import pandas as pd
 
@@ -19,13 +19,14 @@ def download_full_dataset(
     end_date: str,
     output_dir: str = 'data/raw',
     check_existing: bool = True
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+) -> pd.DataFrame:
     """
-    Download both options data and stock prices for a ticker over a date range.
+    Download both options data and stock prices for a ticker over a date range,
+    and combine them into a single DataFrame.
 
     This is the primary function for building a complete dataset for analysis.
     Downloads EOD options data with Greeks and daily stock prices, both supporting
-    incremental downloads via CSV checking.
+    incremental downloads via CSV checking, then joins them together.
 
     Args:
         ticker: Stock symbol (e.g., 'AAPL')
@@ -35,21 +36,25 @@ def download_full_dataset(
         check_existing: If True, check existing CSV and only download missing data
 
     Returns:
-        Tuple of (options_df, stock_df) where both are pandas DataFrames
+        Combined DataFrame with all options data and corresponding stock prices.
+        Contains both options columns and stock price columns.
 
     Raises:
         ValueError: If date format is invalid, end_date < start_date, or invalid ticker
         Exception: If API requests fail after all retries
 
     Example:
-        >>> options_df, stock_df = download_full_dataset(
+        >>> df = download_full_dataset(
         ...     ticker='AAPL',
         ...     start_date='2022-01-25',
         ...     end_date='2024-01-25',
         ...     output_dir='data/raw',
         ...     check_existing=True
         ... )
-        >>> print(f"Downloaded {len(options_df):,} options contracts and {len(stock_df):,} trading days")
+        >>> print(f"Downloaded {len(df):,} combined records")
+        >>> print(df.columns.tolist())
+        # ['symbol', 'expiration', 'strike', 'right', 'delta', 'theta', ...,
+        #  'open', 'high', 'low', 'volume', 'adjusted_close', ...]
     """
     # Validate date inputs
     try:
@@ -88,18 +93,41 @@ def download_full_dataset(
         check_existing=check_existing
     )
 
+    # Convert both to datetime for proper joining
+    options_df['timestamp'] = pd.to_datetime(options_df['timestamp'])
+    stock_df['date'] = pd.to_datetime(stock_df['date'])
+
+    # add "underlying_" prefix to stock_df columns
+    stock_df.columns = [f'underlying_{col}' for col in stock_df.columns]
+
+
+    # Left join: preserve all options data, add stock prices where available
+    combined_df = options_df.merge(
+        stock_df,
+        left_on='timestamp',
+        right_on='underlying_date',
+        how='left',
+    )
+
+    # drop underlying_date column
+    combined_df = combined_df.drop(columns=['underlying_date', 'underlying_symbol'])
+
+    # Round price columns to 2 decimal places
+    price_cols = ['underlying_open', 'underlying_high', 'underlying_low', 'underlying_close']
+    combined_df[price_cols] = combined_df[price_cols].round(2)
+
     # Final summary
     print(f"\n{'='*60}")
     print(f"Dataset download complete!")
     print(f"{'='*60}")
-    print(f"Options data:")
-    print(f"  Total contracts: {len(options_df):,}")
-    print(f"  Date range: {options_df['timestamp'].min()} to {options_df['timestamp'].max()}")
-    print(f"  Unique expirations: {options_df['expiration'].nunique()}")
-    print(f"\nStock price data:")
-    print(f"  Total trading days: {len(stock_df):,}")
-    print(f"  Date range: {stock_df['date'].min()} to {stock_df['date'].max()}")
-    print(f"  Price range: ${stock_df['close'].min():.2f} - ${stock_df['close'].max():.2f}")
+    print(f"Combined data:")
+    print(f"  Total records: {len(combined_df):,}")
+    print(f"  Date range: {start_date} to {end_date}")
+    print(f"  Unique expirations: {combined_df['expiration'].nunique()}")
+    print(f"  Stock price columns: {[col for col in combined_df.columns if col not in options_df.columns]}")
     print(f"{'='*60}")
 
-    return options_df, stock_df
+    # save to csv
+    combined_df.to_csv(f'data/raw/{ticker}_dataset.csv', index=False)
+
+    return combined_df

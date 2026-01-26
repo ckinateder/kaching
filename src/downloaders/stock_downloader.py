@@ -283,7 +283,7 @@ class YFinanceDownloader:
             'Open': 'open',
             'High': 'high',
             'Low': 'low',
-            'Close': 'adjusted_close',  # yfinance 'Close' is already adjusted
+            'Close': 'close',  # yfinance 'Close' is already adjusted
             'Volume': 'volume'
         }
 
@@ -291,10 +291,6 @@ class YFinanceDownloader:
 
         # Add symbol column
         df['symbol'] = ticker
-
-        # For consistency, add a 'close' column that equals adjusted_close
-        # (In yfinance, 'Close' is already adjusted for splits/dividends)
-        df['close'] = df['adjusted_close']
 
         # Format date as YYYY-MM-DD string
         df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
