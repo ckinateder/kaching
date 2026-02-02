@@ -6,18 +6,12 @@ for use in options analysis (OTM% and P&L calculations).
 """
 
 import time
-from typing import Optional, Tuple
-from pathlib import Path
 
 import pandas as pd
 import yfinance as yf
 
-from .downloader_utils import (
+from . import (
     validate_date_range,
-    generate_date_range,
-    find_missing_dates,
-    create_output_directory,
-    find_contiguous_date_ranges,
     download_and_save_with_incremental
 )
 

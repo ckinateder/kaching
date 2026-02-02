@@ -20,6 +20,11 @@ pip install -r requirements.txt
 ```
 
 3. Ensure Theta Data Terminal is running on localhost:25503
+```bash
+cd ~/api-thetadata
+java -jar ThetaTerminalv3.jar 
+```
+Make sure your credentials are in the `creds.txt` file in the `api-thetadata` directory.
 
 ## Usage
 
@@ -70,23 +75,6 @@ df.to_csv('data/raw/AAPL_stock_prices.csv', index=False)
 **Stock prices are used for:**
 - **OTM% calculation**: `(stock_price_quote_date - strike) / stock_price_quote_date × 100`
 - **P&L calculation**: `bid - max(0, strike - stock_price_expiry)`
-
-### Features
-
-**Options Data (ThetaDataDownloader):**
-- **Day-by-day download**: Automatically handles API constraint requiring daily requests for `expiration=*`
-- **Progress logging**: Real-time feedback on download progress
-- **Incremental downloads**: Checks existing CSV files and only downloads missing dates
-- **Retry logic**: Exponential backoff for failed requests (3 attempts)
-- **Data validation**: Basic sanity checks on downloaded data
-- **Essential fields only**: Automatically filters to reduce data redundancy
-
-**Stock Prices (YFinanceDownloader):**
-- **Bulk download**: Efficient single API call for entire date range (~150x faster than day-by-day)
-- **Incremental downloads**: Checks existing CSV files and only downloads missing dates
-- **Retry logic**: Exponential backoff for failed requests (3 attempts)
-- **Data validation**: Validates prices and checks for data quality issues
-- **Trading days only**: Automatically filters to actual trading days (no weekends/holidays)
 
 ### Essential Fields
 

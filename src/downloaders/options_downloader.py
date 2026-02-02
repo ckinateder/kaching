@@ -10,17 +10,15 @@ from io import StringIO
 from typing import Optional, Tuple
 from datetime import datetime
 from pathlib import Path
+from tqdm import tqdm
 
 import pandas as pd
 import requests
 from requests.exceptions import RequestException, Timeout, ConnectionError
 
-from .downloader_utils import (
+from . import (
     validate_date_range,
     generate_date_range,
-    find_missing_dates,
-    create_output_directory,
-    find_contiguous_date_ranges,
     download_and_save_with_incremental
 )
 
@@ -117,7 +115,7 @@ class ThetaDataDownloader:
 
         print(f"\nDownloading {ticker} options data for {total_days} days...")
 
-        for i, date in enumerate(all_dates, 1):
+        for date in tqdm(all_dates, desc=f"{ticker} options", unit="day"):
             # Format date as YYYYMMDD for API
             date_str = pd.to_datetime(date).strftime('%Y%m%d')
 
@@ -148,22 +146,21 @@ class ThetaDataDownloader:
                         if self._validate_data(df):
                             all_data.append(df)
                             total_contracts += len(df)
-                            print(f"[{date}] Downloaded {len(df):,} contracts ({i}/{total_days} days)")
                         else:
-                            print(f"[{date}] ⚠ Data validation failed, skipping")
+                            tqdm.write(f"[{date}] ⚠ Data validation failed, skipping")
                     else:
-                        print(f"[{date}] No data (non-trading day or no options)")
+                        tqdm.write(f"[{date}] No data (non-trading day or no options)")
                 else:
-                    print(f"[{date}] Empty response (non-trading day)")
+                    tqdm.write(f"[{date}] Empty response (non-trading day)")
 
             except Exception as e:
-                print(f"[{date}] ✗ Error: {e}")
-                print(f"         Skipping this date and continuing...")
+                tqdm.write(f"[{date}] ✗ Error: {e}")
+                tqdm.write(f"         Skipping this date and continuing...")
                 continue
 
         # Combine all downloaded data
         if not all_data:
-            print(f"\n⚠ No data downloaded for {ticker}")
+            tqdm.write(f"\n⚠ No data downloaded for {ticker}")
             # Return empty DataFrame with expected columns
             return pd.DataFrame(columns=self._get_essential_fields())
 

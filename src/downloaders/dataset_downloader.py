@@ -11,15 +11,13 @@ import pandas as pd
 
 from .options_downloader import ThetaDataDownloader
 from .stock_downloader import YFinanceDownloader
-from .downloader_utils import validate_date_range
+from . import validate_date_range
 
 
 def download_full_dataset(
     ticker: str,
     start_date: str,
     end_date: str,
-    output_dir: str = 'data/raw',
-    check_existing: bool = True
 ) -> pd.DataFrame:
     """
     Download both options data and stock prices for a ticker over a date range,
@@ -85,6 +83,7 @@ def download_full_dataset(
 
     # Convert both to datetime for proper joining
     options_df['timestamp'] = pd.to_datetime(options_df['timestamp'])
+    options_df['expiration'] = pd.to_datetime(options_df['expiration'])
     stock_df['date'] = pd.to_datetime(stock_df['date'])
 
     # add "underlying_" prefix to stock_df columns
@@ -121,7 +120,13 @@ def download_full_dataset(
     print(f"  Stock price columns: {[col for col in combined_df.columns if col not in options_df.columns]}")
     print(f"{'='*60}")
 
-    # save to csv
-    combined_df.to_csv(f'data/raw/{ticker}_dataset.csv', index=False)
-
     return combined_df
+
+if __name__ == "__main__":
+    tickers = ["TTD", "DECK"]
+    for ticker in tickers:
+        df = download_full_dataset(
+            ticker=ticker,
+            start_date='2025-12-01',
+            end_date='2025-12-31',
+        )
