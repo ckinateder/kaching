@@ -269,5 +269,7 @@ def download_and_save_with_incremental(
 
 # Import classes at the end to avoid circular imports
 # These imports must come after utility functions are defined
+from .base_downloader import BaseDownloader
 from .options_downloader import ThetaDataDownloader, ESSENTIAL_FIELDS
 from .stock_downloader import YFinanceDownloader, STOCK_PRICE_FIELDS
+from .dataset_downloader import DatasetDownloader

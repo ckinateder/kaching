@@ -20,10 +20,11 @@ def main():
     print("Example 1: Download 1 week of AAPL options data")
     print("=" * 60)
 
-    df = downloader.download_and_save_options_eod_data(
+    df = downloader.download(
         ticker='AAPL',
         start_date='2024-01-15',
         end_date='2024-01-19',
+        save=True,
         csv_filepath='data/raw/AAPL_options_eod.csv',
         incremental=True
     )
@@ -36,10 +37,11 @@ def main():
     print("Example 2: Incremental update with new dates")
     print("=" * 60)
 
-    df_updated = downloader.download_and_save_options_eod_data(
+    df_updated = downloader.download(
         ticker='AAPL',
         start_date='2024-01-15',
         end_date='2024-02-26',  # Extended range
+        save=True,
         csv_filepath='data/raw/AAPL_options_eod.csv',
         incremental=True  # Will only download missing dates
     )
@@ -68,7 +70,7 @@ def main():
     if missing_dates:
         # Download only the missing data
         print(f"Downloading missing dates: {missing_dates[0]} to {missing_dates[-1]}")
-        new_df = downloader.download_options_eod_data(
+        new_df = downloader.download(
             ticker='AAPL',
             start_date=missing_dates[0],
             end_date=missing_dates[-1]
@@ -88,7 +90,7 @@ def main():
     print("Example 4: Download without saving (analysis only)")
     print("=" * 60)
 
-    df_analysis = downloader.download_options_eod_data(
+    df_analysis = downloader.download(
         ticker='MSFT',
         start_date='2024-01-02',
         end_date='2024-01-02'
@@ -105,10 +107,11 @@ def main():
     # print("Example 5: Download full year of SCHW options data")
     # print("=" * 60)
     #
-    # df_full = downloader.download_and_save_options_eod_data(
+    # df_full = downloader.download(
     #     ticker='SCHW',
     #     start_date='2024-01-01',
     #     end_date='2024-12-31',
+    #     save=True,
     #     csv_filepath='data/raw/SCHW_options_eod.csv',
     #     incremental=True
     # )

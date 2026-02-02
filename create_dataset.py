@@ -1,11 +1,11 @@
-from src.downloaders.dataset_downloader import download_full_dataset
+from src.downloaders.dataset_downloader import DatasetDownloader
 from src.postprocess import add_moneyness_column, add_price_at_expiry, calculate_pnl
 import os
 
 if __name__ == "__main__":
     tickers = ["TTD", "DECK"]
     for ticker in tickers:
-        df = download_full_dataset(
+        df = DatasetDownloader().download(
             ticker=ticker,
             start_date='2025-12-01',
             end_date='2025-12-31',

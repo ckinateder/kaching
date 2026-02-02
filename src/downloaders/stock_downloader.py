@@ -10,10 +10,8 @@ import time
 import pandas as pd
 import yfinance as yf
 
-from . import (
-    validate_date_range,
-    download_and_save_with_incremental
-)
+from . import validate_date_range
+from .base_downloader import BaseDownloader
 
 
 # Essential fields to keep for stock price data
@@ -29,7 +27,7 @@ STOCK_PRICE_FIELDS = [
 ]
 
 
-class YFinanceDownloader:
+class YFinanceDownloader(BaseDownloader):
     """
     Download daily stock price data using yfinance.
 
@@ -46,7 +44,7 @@ class YFinanceDownloader:
         """Initialize the yfinance downloader."""
         pass
 
-    def download_stock_prices(
+    def _download_only(
         self,
         ticker: str,
         start_date: str,
@@ -56,8 +54,6 @@ class YFinanceDownloader:
         Download daily stock prices for a ticker.
 
         Pure download function - downloads all dates in range without checking files.
-        For incremental downloads, use download_and_save_stock_prices() instead.
-
         Downloads stock price data in a single bulk API call (much faster than
         day-by-day downloads).
 
@@ -92,47 +88,27 @@ class YFinanceDownloader:
 
         return result_df
 
-    def download_and_save_stock_prices(
+    # Abstract method implementations
+
+    def _merge_data(
         self,
-        ticker: str,
-        start_date: str,
-        end_date: str,
-        csv_filepath: str,
-        incremental: bool = True
+        existing_df: pd.DataFrame,
+        new_df: pd.DataFrame
     ) -> pd.DataFrame:
-        """
-        Download stock prices and save to CSV (with optional incremental update).
+        """Delegate to static merge method."""
+        return self.merge_stock_data(existing_df, new_df)
 
-        Convenience function that orchestrates the full workflow.
-        See download_and_save_with_incremental() for implementation details.
+    def _get_date_column(self) -> str:
+        """Return date column name for stock data."""
+        return 'date'
 
-        Args:
-            ticker: Stock symbol (e.g., 'AAPL')
-            start_date: Start date 'YYYY-MM-DD'
-            end_date: End date 'YYYY-MM-DD'
-            csv_filepath: Full path to save CSV (e.g., 'data/raw/AAPL_stock_prices.csv')
-            incremental: If True, check existing CSV and only download missing dates
+    def _parse_timestamp(self) -> bool:
+        """Stock data has date-only (no time component)."""
+        return False
 
-        Returns:
-            Complete DataFrame (existing + new data)
-
-        Raises:
-            ValueError: If date format is invalid, end_date < start_date, or invalid ticker
-            Exception: If API requests fail after all retries
-        """
-        return download_and_save_with_incremental(
-            ticker=ticker,
-            start_date=start_date,
-            end_date=end_date,
-            csv_filepath=csv_filepath,
-            incremental=incremental,
-            download_func=self.download_stock_prices,
-            merge_func=self.merge_stock_data,
-            date_column='date',
-            parse_timestamp=False,
-            data_type_name='trading days',
-            essential_fields=self._get_essential_fields()
-        )
+    def _get_data_type_name(self) -> str:
+        """Return human-readable data type name."""
+        return 'trading days'
 
     def _download_with_retry(
         self,

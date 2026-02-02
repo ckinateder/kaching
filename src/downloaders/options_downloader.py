@@ -19,8 +19,8 @@ from requests.exceptions import RequestException, Timeout, ConnectionError
 from . import (
     validate_date_range,
     generate_date_range,
-    download_and_save_with_incremental
 )
+from .base_downloader import BaseDownloader
 
 
 # Essential fields to keep (drop unnecessary columns to minimize data redundancy)
@@ -57,7 +57,7 @@ ESSENTIAL_FIELDS = [
 ]
 
 
-class ThetaDataDownloader:
+class ThetaDataDownloader(BaseDownloader):
     """
     Download end-of-day options data with Greeks from Theta Data Terminal API.
 
@@ -76,7 +76,7 @@ class ThetaDataDownloader:
         self.base_url = base_url
         self.session = requests.Session()
 
-    def download_options_eod_data(
+    def _download_only(
         self,
         ticker: str,
         start_date: str,
@@ -86,8 +86,6 @@ class ThetaDataDownloader:
         Download EOD options data with Greeks for all expirations.
 
         Pure download function - downloads all dates in range without checking files.
-        For incremental downloads, use download_and_save_options_eod_data() instead.
-
         Downloads data day-by-day (API constraint for expiration=*) with progress logging.
 
         Args:
@@ -182,47 +180,27 @@ class ThetaDataDownloader:
 
         return result_df
 
-    def download_and_save_options_eod_data(
+    # Abstract method implementations
+
+    def _merge_data(
         self,
-        ticker: str,
-        start_date: str,
-        end_date: str,
-        csv_filepath: str,
-        incremental: bool = True
+        existing_df: pd.DataFrame,
+        new_df: pd.DataFrame
     ) -> pd.DataFrame:
-        """
-        Download options data and save to CSV (with optional incremental update).
+        """Delegate to static merge method."""
+        return self.merge_options_data(existing_df, new_df)
 
-        Convenience function that orchestrates the full workflow.
-        See download_and_save_with_incremental() for implementation details.
+    def _get_date_column(self) -> str:
+        """Return date column name for options data."""
+        return 'timestamp'
 
-        Args:
-            ticker: Stock symbol (e.g., 'AAPL')
-            start_date: Start date 'YYYY-MM-DD'
-            end_date: End date 'YYYY-MM-DD'
-            csv_filepath: Full path to save CSV (e.g., 'data/raw/AAPL_options_eod.csv')
-            incremental: If True, check existing CSV and only download missing dates
+    def _parse_timestamp(self) -> bool:
+        """Options data has timestamp with time component."""
+        return True
 
-        Returns:
-            Complete DataFrame (existing + new data)
-
-        Raises:
-            ValueError: If date format is invalid or end_date < start_date
-            Exception: If API requests fail after all retries
-        """
-        return download_and_save_with_incremental(
-            ticker=ticker,
-            start_date=start_date,
-            end_date=end_date,
-            csv_filepath=csv_filepath,
-            incremental=incremental,
-            download_func=self.download_options_eod_data,
-            merge_func=self.merge_options_data,
-            date_column='timestamp',
-            parse_timestamp=True,
-            data_type_name='contracts',
-            essential_fields=self._get_essential_fields()
-        )
+    def _get_data_type_name(self) -> str:
+        """Return human-readable data type name."""
+        return 'contracts'
 
     def _make_api_request(
         self,

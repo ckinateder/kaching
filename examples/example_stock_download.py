@@ -25,10 +25,11 @@ def main():
     print("Example 1: Download AAPL stock prices (1 month)")
     print("=" * 60)
 
-    df_aapl = downloader.download_and_save_stock_prices(
+    df_aapl = downloader.download(
         ticker='AAPL',
         start_date='2024-01-01',
         end_date='2024-01-31',
+        save=True,
         csv_filepath='data/raw/AAPL_stock_prices.csv',
         incremental=True
     )
@@ -43,10 +44,11 @@ def main():
     print("Example 2: Download SCHW stock prices (full year)")
     print("=" * 60)
 
-    df_schw = downloader.download_and_save_stock_prices(
+    df_schw = downloader.download(
         ticker='SCHW',
         start_date='2024-01-01',
         end_date='2024-12-31',
+        save=True,
         csv_filepath='data/raw/SCHW_stock_prices.csv',
         incremental=True
     )
@@ -59,10 +61,11 @@ def main():
     print("Example 3: Incremental download (extend AAPL to Feb)")
     print("=" * 60)
 
-    df_aapl_extended = downloader.download_and_save_stock_prices(
+    df_aapl_extended = downloader.download(
         ticker='AAPL',
         start_date='2024-01-01',
         end_date='2024-02-29',  # Extend into February
+        save=True,
         csv_filepath='data/raw/AAPL_stock_prices.csv',
         incremental=True  # Will only download missing dates
     )
@@ -74,7 +77,7 @@ def main():
     print("Example 4: Download without saving (analysis only)")
     print("=" * 60)
 
-    df_analysis = downloader.download_stock_prices(
+    df_analysis = downloader.download(
         ticker='MSFT',
         start_date='2024-01-01',
         end_date='2024-01-31'
@@ -105,7 +108,7 @@ def main():
     if missing_dates:
         # Download only the missing data
         print(f"Downloading missing dates: {missing_dates[0]} to {missing_dates[-1]}")
-        new_df = downloader.download_stock_prices(
+        new_df = downloader.download(
             ticker='AAPL',
             start_date=missing_dates[0],
             end_date=missing_dates[-1]
