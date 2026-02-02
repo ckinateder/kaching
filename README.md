@@ -127,6 +127,23 @@ python example_stock_download.py
 python test_stock_downloader.py
 ```
 
+### Running Tests
+
+Run the comprehensive test suite for downloader modules:
+
+```bash
+python -m unittest tests/test_downloaders.py
+```
+
+The test suite covers:
+- Date range validation and generation
+- Data merging and deduplication
+- Data validation (bad data detection)
+- Column standardization
+- Dataset joining logic
+
+All tests use real DECK fixtures and don't make any external API calls.
+
 ## Project Roadmap
 
 - [x] **Phase 1.1**: Historical data download ← Current
