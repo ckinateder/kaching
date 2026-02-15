@@ -66,13 +66,15 @@ class ThetaDataDownloader(BaseDownloader):
         session: Requests session for connection reuse
     """
 
-    def __init__(self, base_url: str = 'http://127.0.0.1:25503/v3'):
+    def __init__(self, base_url: str = 'http://127.0.0.1:25503/v3', max_workers: int = 8):
         """
         Initialize the Theta Data downloader.
 
         Args:
             base_url: Base URL for the Theta Data API (default: localhost terminal)
+            max_workers: Maximum concurrent workers for parallel downloads (default: 8)
         """
+        super().__init__(max_workers=max_workers)
         self.base_url = base_url
         self.session = requests.Session()
 
@@ -85,8 +87,7 @@ class ThetaDataDownloader(BaseDownloader):
         """
         Download EOD options data with Greeks for all expirations.
 
-        Pure download function - downloads all dates in range without checking files.
-        Downloads data day-by-day (API constraint for expiration=*) with progress logging.
+        Supports both sequential (max_workers=1) and concurrent (max_workers>1) modes.
 
         Args:
             ticker: Stock symbol (e.g., 'AAPL')
@@ -105,80 +106,17 @@ class ThetaDataDownloader(BaseDownloader):
 
         # Generate full date range
         all_dates = generate_date_range(start_date, end_date)
-
-        # Download data day by day
-        all_data = []
         total_days = len(all_dates)
-        total_contracts = 0
 
         print(f"\nDownloading {ticker} options data for {total_days} days...")
 
-        for date in tqdm(all_dates, desc=f"{ticker} options", unit="day"):
-            # Format date as YYYYMMDD for API
-            date_str = pd.to_datetime(date).strftime('%Y%m%d')
-
-            # Build API parameters
-            params = {
-                'symbol': ticker,
-                'expiration': '*',  # All expirations
-                'start_date': date_str,
-                'end_date': date_str,
-                'format': 'csv'
-            }
-
-            try:
-                # Make API request
-                response_text = self._make_api_request('/option/history/greeks/eod', params)
-
-                # Parse CSV response
-                if response_text and len(response_text.strip()) > 0:
-                    df = pd.read_csv(StringIO(response_text))
-
-                    if not df.empty:
-                        # Filter to essential fields (only keep columns that exist)
-                        essential = self._get_essential_fields()
-                        available_fields = [f for f in essential if f in df.columns]
-                        df = df[available_fields]
-
-                        # Basic validation
-                        if self._validate_data(df):
-                            all_data.append(df)
-                            total_contracts += len(df)
-                        else:
-                            tqdm.write(f"[{date}] ⚠ Data validation failed, skipping")
-                    else:
-                        tqdm.write(f"[{date}] No data (non-trading day or no options)")
-                else:
-                    tqdm.write(f"[{date}] Empty response (non-trading day)")
-
-            except Exception as e:
-                tqdm.write(f"[{date}] ✗ Error: {e}")
-                tqdm.write(f"         Skipping this date and continuing...")
-                continue
-
-        # Combine all downloaded data
-        if not all_data:
-            tqdm.write(f"\n⚠ No data downloaded for {ticker}")
-            # Return empty DataFrame with expected columns
-            return pd.DataFrame(columns=self._get_essential_fields())
-
-        result_df = pd.concat(all_data, ignore_index=True)
-
-        # Ensure timestamp column is datetime (for consistent sorting and display)
-        result_df['timestamp'] = pd.to_datetime(result_df['timestamp'], format='ISO8601')
-
-        # Sort by expiration date, quote date (timestamp), strike, right
-        result_df = result_df.sort_values(['expiration', 'timestamp', 'strike', 'right'])
-
-        # remove rows where expiration date is before the start date
-        result_df = result_df[result_df['expiration'] >= start_date]
-
-        print(f"\n✓ Download complete!")
-        print(f"  Total contracts: {len(result_df):,}")
-        print(f"  Date range: {result_df['timestamp'].min()} to {result_df['timestamp'].max()}")
-        print(f"  Unique expirations: {result_df['expiration'].nunique()}")
-
-        return result_df
+        # Choose execution mode
+        if self.max_workers == 1:
+            # Sequential mode (original behavior)
+            return self._download_sequential(ticker, all_dates, start_date)
+        else:
+            # Concurrent mode (new behavior)
+            return self._download_concurrent(ticker, all_dates, start_date)
 
     # Abstract method implementations
 
@@ -295,6 +233,187 @@ class ThetaDataDownloader(BaseDownloader):
             return False
 
         return True
+
+    def _download_single_date(
+        self,
+        ticker: str,
+        date: str  # 'YYYY-MM-DD' format
+    ) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
+        """
+        Download options data for a single date.
+
+        Designed to be called either sequentially or concurrently.
+
+        Args:
+            ticker: Stock symbol
+            date: Date in 'YYYY-MM-DD' format
+
+        Returns:
+            Tuple of (dataframe, error_message)
+            - If successful: (df, None)
+            - If failed: (None, error_string)
+        """
+        try:
+            # Format date as YYYYMMDD for API
+            date_str = pd.to_datetime(date).strftime('%Y%m%d')
+
+            # Build API parameters
+            params = {
+                'symbol': ticker,
+                'expiration': '*',
+                'start_date': date_str,
+                'end_date': date_str,
+                'format': 'csv'
+            }
+
+            # Make API request
+            response_text = self._make_api_request('/option/history/greeks/eod', params)
+
+            # Parse CSV response
+            if response_text and len(response_text.strip()) > 0:
+                df = pd.read_csv(StringIO(response_text))
+
+                if not df.empty:
+                    # Filter to essential fields
+                    essential = self._get_essential_fields()
+                    available_fields = [f for f in essential if f in df.columns]
+                    df = df[available_fields]
+
+                    # Basic validation
+                    if self._validate_data(df):
+                        return df, None
+                    else:
+                        return None, "Data validation failed"
+                else:
+                    return None, "No data (non-trading day or no options)"
+            else:
+                return None, "Empty response (non-trading day)"
+
+        except Exception as e:
+            error_str = str(e)
+            # Check if this is a "no data" error (472)
+            if '472' in error_str or 'No data found' in error_str:
+                return None, "No data found (API 472)"
+            else:
+                return None, f"Error: {e}"
+
+    def _download_sequential(
+        self,
+        ticker: str,
+        all_dates: list,
+        start_date: str
+    ) -> pd.DataFrame:
+        """Sequential download mode (original behavior)."""
+        all_data = []
+        missing_dates = 0
+
+        pbar = tqdm(all_dates, desc=f"{ticker} options", unit="day")
+        for date in pbar:
+            df, error = self._download_single_date(ticker, date)
+
+            if df is not None:
+                all_data.append(df)
+            elif error and "No data found (API 472)" in error:
+                missing_dates += 1
+                pbar.set_postfix(missing=missing_dates, refresh=False)
+            elif error:
+                tqdm.write(f"[{date}] {error}")
+
+        return self._finalize_download(all_data, ticker, start_date, missing_dates)
+
+    def _download_concurrent(
+        self,
+        ticker: str,
+        all_dates: list,
+        start_date: str
+    ) -> pd.DataFrame:
+        """Concurrent download mode using ThreadPoolExecutor."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        all_data = []
+        missing_dates = 0
+        errors = []
+
+        # Create thread pool
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # Submit all download tasks
+            future_to_date = {
+                executor.submit(self._download_single_date, ticker, date): date
+                for date in all_dates
+            }
+
+            # Process completed downloads as they finish
+            with tqdm(total=len(all_dates), desc=f"{ticker} options ({self.max_workers} workers)", unit="day") as pbar:
+                for future in as_completed(future_to_date):
+                    date = future_to_date[future]
+
+                    try:
+                        df, error = future.result()
+
+                        if df is not None:
+                            all_data.append(df)
+                        elif error:
+                            if "No data found (API 472)" in error:
+                                missing_dates += 1
+                                pbar.set_postfix(missing=missing_dates, refresh=False)
+                            else:
+                                errors.append((date, error))
+                                tqdm.write(f"[{date}] {error}")
+
+                    except Exception as e:
+                        errors.append((date, str(e)))
+                        tqdm.write(f"[{date}] Unexpected error: {e}")
+
+                    pbar.update(1)
+
+        # Print error summary if any non-trivial errors
+        if errors:
+            print(f"\n⚠ {len(errors)} dates failed to download:")
+            for date, error in errors[:5]:  # Show first 5
+                print(f"  - {date}: {error}")
+            if len(errors) > 5:
+                print(f"  ... and {len(errors) - 5} more")
+
+        return self._finalize_download(all_data, ticker, start_date, missing_dates)
+
+    def _finalize_download(
+        self,
+        all_data: list,
+        ticker: str,
+        start_date: str,
+        missing_dates: int
+    ) -> pd.DataFrame:
+        """
+        Finalize download by combining DataFrames and printing summary.
+
+        Shared by both sequential and concurrent modes.
+        """
+        # Combine all downloaded data
+        if not all_data:
+            tqdm.write(f"\n⚠ No data downloaded for {ticker}")
+            if missing_dates > 0:
+                print(f"  Missing dates: {missing_dates}")
+            return pd.DataFrame(columns=self._get_essential_fields())
+
+        result_df = pd.concat(all_data, ignore_index=True)
+
+        # Ensure timestamp column is datetime
+        result_df['timestamp'] = pd.to_datetime(result_df['timestamp'], format='ISO8601')
+
+        # Sort by expiration, timestamp, strike, right
+        result_df = result_df.sort_values(['expiration', 'timestamp', 'strike', 'right'])
+
+        # Remove rows where expiration < start_date
+        result_df = result_df[result_df['expiration'] >= start_date]
+
+        print(f"\n✓ Download complete!")
+        print(f"  Total contracts: {len(result_df):,}")
+        print(f"  Date range: {result_df['timestamp'].min()} to {result_df['timestamp'].max()}")
+        print(f"  Unique expirations: {result_df['expiration'].nunique()}")
+        if missing_dates > 0:
+            print(f"  Missing dates: {missing_dates}")
+
+        return result_df
 
     @staticmethod
     def merge_options_data(

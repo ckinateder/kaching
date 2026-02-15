@@ -10,7 +10,8 @@ from pathlib import Path
 from tqdm import tqdm
 
 import pandas as pd
-
+import json
+import os
 
 def validate_date_range(start_date: str, end_date: str) -> None:
     """
@@ -49,20 +50,20 @@ def generate_date_range(start_date: str, end_date: str) -> list:
 
 
 def find_missing_dates(
-    csv_filepath: str,
+    filepath: str,
     start_date: str,
     end_date: str,
     date_column: str = 'date',
     parse_timestamp: bool = False
 ) -> Tuple[Optional[pd.DataFrame], list]:
     """
-    Check existing CSV and identify missing dates.
+    Check existing Parquet file and identify missing dates.
 
     Generic function that works for both options and stock data by accepting
     a date_column parameter and optional timestamp parsing.
 
     Args:
-        csv_filepath: Full path to CSV file (e.g., 'data/raw/AAPL_stock_prices.csv')
+        filepath: Full path to Parquet file (e.g., 'data/raw/AAPL_stock_prices.parquet')
         start_date: Desired start date 'YYYY-MM-DD'
         end_date: Desired end date 'YYYY-MM-DD'
         date_column: Name of column containing dates (default: 'date')
@@ -74,24 +75,26 @@ def find_missing_dates(
         If no existing file: (None, all_dates_in_range)
         If all dates exist: (existing_df, [])
     """
-    csv_path = Path(csv_filepath)
+    parquet_path = Path(filepath)
     requested_dates = generate_date_range(start_date, end_date)
 
-    # If CSV doesn't exist, all dates are missing
-    if not csv_path.exists():
+    # If Parquet file doesn't exist, all dates are missing
+    if not parquet_path.exists():
         return None, requested_dates
 
     try:
-        # Load existing CSV
-        df = pd.read_csv(csv_filepath)
+        # Load existing Parquet file
+        df = pd.read_parquet(filepath)
 
         if df.empty:
             return None, requested_dates
 
         # Extract dates from the specified column
         if parse_timestamp:
-            # For options data: parse timestamp column to extract dates
-            df[date_column] = pd.to_datetime(df[date_column], format='ISO8601')
+            # For options data: timestamp column is already datetime from Parquet
+            # Just extract dates if needed
+            if not pd.api.types.is_datetime64_any_dtype(df[date_column]):
+                df[date_column] = pd.to_datetime(df[date_column], format='ISO8601')
             existing_dates = df[date_column].dt.date.unique()
             existing_dates_str = [d.strftime('%Y-%m-%d') for d in existing_dates]
         else:
@@ -104,7 +107,7 @@ def find_missing_dates(
         return df, missing_dates
 
     except Exception as e:
-        print(f"⚠ Warning: Could not read existing CSV: {e}")
+        print(f"⚠ Warning: Could not read existing Parquet file: {e}")
         print(f"  Proceeding as if no existing data...")
         return None, requested_dates
 
@@ -176,7 +179,7 @@ def download_and_save_with_incremental(
     ticker: str,
     start_date: str,
     end_date: str,
-    csv_filepath: str,
+    filepath: str,
     incremental: bool,
     download_func: callable,
     merge_func: callable,
@@ -186,14 +189,14 @@ def download_and_save_with_incremental(
     essential_fields: list
 ) -> pd.DataFrame:
     """
-    Generic orchestration function for incremental downloads with CSV persistence.
+    Generic orchestration function for incremental downloads with Parquet persistence.
 
     Handles the full workflow:
-    1. Check for existing CSV (if incremental=True)
+    1. Check for existing Parquet file (if incremental=True)
     2. Find contiguous ranges of missing dates
     3. Download each range
     4. Merge with existing data
-    5. Save to CSV
+    5. Save to Parquet
     6. Return complete DataFrame
 
     This function eliminates code duplication between stock and options downloaders
@@ -203,11 +206,11 @@ def download_and_save_with_incremental(
         ticker: Stock symbol (e.g., 'AAPL')
         start_date: Start date 'YYYY-MM-DD'
         end_date: End date 'YYYY-MM-DD'
-        csv_filepath: Full path to save CSV
-        incremental: If True, check existing CSV and only download missing dates
+        filepath: Full path to save Parquet file
+        incremental: If True, check existing Parquet file and only download missing dates
         download_func: Function to download data (signature: func(ticker, start, end) -> DataFrame)
         merge_func: Function to merge data (signature: func(existing_df, new_df) -> DataFrame)
-        date_column: Column name containing dates in CSV ('date' or 'timestamp')
+        date_column: Column name containing dates in Parquet ('date' or 'timestamp')
         parse_timestamp: Whether to parse datetime column for date extraction
         data_type_name: Name for progress messages ('trading days' or 'contracts')
         essential_fields: List of column names for empty DataFrame fallback
@@ -220,7 +223,7 @@ def download_and_save_with_incremental(
     if incremental:
         # Check for existing data
         existing_df, missing_dates = find_missing_dates(
-            csv_filepath, start_date, end_date,
+            filepath, start_date, end_date,
             date_column=date_column,
             parse_timestamp=parse_timestamp
         )
@@ -258,14 +261,23 @@ def download_and_save_with_incremental(
     else:
         result_df = new_df
 
-    # Save to CSV
-    print(f"\nSaving to {csv_filepath}...")
-    create_output_directory(csv_filepath)
-    result_df.to_csv(csv_filepath, index=False)
+    # Save to Parquet
+    print(f"\nSaving to {filepath}...")
+    create_output_directory(filepath)
+    result_df.to_parquet(filepath, index=False)
     print(f"✓ Saved {len(result_df):,} {data_type_name}")
 
     return result_df
 
+def get_weekly_options_tickers(path: str = os.path.join('meta', 'weekly-options-tickers.json')) -> tuple[list, dict]:
+    """
+    Get list of weekly options tickers.
+    """
+    with open(path, 'r') as f:
+        data = json.load(f)['tickers']
+
+    tickers = [ticker['ticker'] for ticker in data]
+    return tickers, data
 
 # Import classes at the end to avoid circular imports
 # These imports must come after utility functions are defined

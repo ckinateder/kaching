@@ -11,5 +11,8 @@ yfinance>=0.2.0
 # Progress bars
 tqdm>=4.65.0
 
+# Parquet file format support
+pyarrow>=14.0.0
+
 # Future dependencies (Phase 2+)
 # scipy>=1.10.0  # For statistical analysis

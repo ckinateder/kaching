@@ -4,7 +4,7 @@ Example: Unified download interface demonstration
 
 This script demonstrates the unified download() method available on all downloaders:
 1. Download-only mode (save=False) - returns DataFrame without saving
-2. Download-and-save mode (save=True) - downloads and saves to CSV
+2. Download-and-save mode (save=True) - downloads and saves to Parquet
 3. Incremental downloads - only fetch missing dates
 4. Parameter validation - proper error handling
 5. DatasetDownloader - combined options + stock data
@@ -73,10 +73,10 @@ def main():
         start_date='2024-01-02',
         end_date='2024-01-05',
         save=True,
-        csv_filepath='data/test/AAPL_options_unified.csv',
+        filepath='data/test/AAPL_options_unified.parquet',
         incremental=True
     )
-    print(f"✓ Saved {len(df_opt_saved):,} contracts to CSV")
+    print(f"✓ Saved {len(df_opt_saved):,} contracts to Parquet")
 
     print("\n[Stock] Download and save with incremental:")
     df_stock_saved = stock_dl.download(
@@ -84,10 +84,10 @@ def main():
         start_date='2024-01-02',
         end_date='2024-01-31',
         save=True,
-        csv_filepath='data/test/AAPL_stock_unified.csv',
+        filepath='data/test/AAPL_stock_unified.parquet',
         incremental=True
     )
-    print(f"✓ Saved {len(df_stock_saved)} trading days to CSV")
+    print(f"✓ Saved {len(df_stock_saved)} trading days to Parquet")
 
     print("\n[Dataset] Download and save combined data:")
     df_dataset_saved = dataset_dl.download(
@@ -95,10 +95,10 @@ def main():
         start_date='2024-01-02',
         end_date='2024-01-02',
         save=True,
-        csv_filepath='data/test/AAPL_dataset_unified.csv',
+        filepath='data/test/AAPL_dataset_unified.parquet',
         incremental=True
     )
-    print(f"✓ Saved {len(df_dataset_saved):,} combined records to CSV")
+    print(f"✓ Saved {len(df_dataset_saved):,} combined records to Parquet")
 
     # Example 3: Incremental update demonstration
     print("\n" + "=" * 70)
@@ -111,7 +111,7 @@ def main():
         start_date='2024-01-02',
         end_date='2024-02-29',  # Extended range
         save=True,
-        csv_filepath='data/test/AAPL_stock_unified.csv',
+        filepath='data/test/AAPL_stock_unified.parquet',
         incremental=True  # Will only download missing dates
     )
     print(f"✓ Now have {len(df_extended)} total trading days (only new dates downloaded)")
@@ -127,7 +127,7 @@ def main():
         start_date='2024-01-02',
         end_date='2024-01-31',
         save=True,
-        csv_filepath='data/test/MSFT_stock_full.csv',
+        filepath='data/test/MSFT_stock_full.parquet',
         incremental=False  # Re-downloads everything
     )
     print(f"✓ Downloaded and saved {len(df_full)} trading days (full re-download)")
@@ -137,28 +137,28 @@ def main():
     print("Example 5: Parameter validation (error handling)")
     print("=" * 70)
 
-    print("\n[Validation] Trying save=True without csv_filepath:")
+    print("\n[Validation] Trying save=True without filepath:")
     try:
         df_error = stock_dl.download(
             ticker='AAPL',
             start_date='2024-01-02',
             end_date='2024-01-05',
-            save=True  # ERROR: csv_filepath required when save=True
+            save=True  # ERROR: filepath required when save=True
         )
         print("✗ ERROR: Should have raised ValueError!")
     except ValueError as e:
         print(f"✓ Validation works correctly: {e}")
 
-    print("\n[Validation] csv_filepath provided but save=False (should work, filepath ignored):")
+    print("\n[Validation] filepath provided but save=False (should work, filepath ignored):")
     df_ignored = stock_dl.download(
         ticker='AAPL',
         start_date='2024-01-02',
         end_date='2024-01-05',
         save=False,  # filepath will be ignored
-        csv_filepath='data/test/ignored.csv'
+        filepath='data/test/ignored.parquet'
     )
     print(f"✓ Works correctly: {len(df_ignored)} days downloaded, filepath ignored")
-    print(f"✓ File was NOT created: {not Path('data/test/ignored.csv').exists()}")
+    print(f"✓ File was NOT created: {not Path('data/test/ignored.parquet').exists()}")
 
     # Example 6: Quick analysis workflow
     print("\n" + "=" * 70)
@@ -185,7 +185,7 @@ def main():
     print("=" * 70)
     print("\nAll downloaders now use the same API:")
     print("  • download(ticker, start_date, end_date) - download-only")
-    print("  • download(..., save=True, csv_filepath='...') - download and save")
+    print("  • download(..., save=True, filepath='...') - download and save")
     print("  • download(..., incremental=True) - only fetch missing dates")
     print("\nConsistent behavior across:")
     print("  • ThetaDataDownloader (options data)")

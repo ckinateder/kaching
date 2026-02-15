@@ -5,7 +5,6 @@ This module provides a DatasetDownloader class that downloads both options data
 and stock prices for building a complete dataset over a specified date range.
 """
 
-from typing import Optional
 import pandas as pd
 
 from .base_downloader import BaseDownloader
@@ -23,15 +22,17 @@ class DatasetDownloader(BaseDownloader):
     stock prices.
     """
 
-    def __init__(self, options_base_url: str = 'http://127.0.0.1:25503/v3'):
+    def __init__(self, options_base_url: str = 'http://127.0.0.1:25503/v3', max_workers: int = 8):
         """
         Initialize the dataset downloader.
 
         Args:
             options_base_url: Base URL for Theta Data API (default: localhost terminal)
+            max_workers: Maximum concurrent workers for options downloads (default: 8)
         """
-        self.options_downloader = ThetaDataDownloader(base_url=options_base_url)
-        self.stock_downloader = YFinanceDownloader()
+        super().__init__(max_workers=max_workers)
+        self.options_downloader = ThetaDataDownloader(base_url=options_base_url, max_workers=max_workers)
+        self.stock_downloader = YFinanceDownloader(max_workers=max_workers)
 
     def _download_only(
         self,

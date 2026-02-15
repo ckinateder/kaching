@@ -24,13 +24,23 @@ class BaseDownloader(ABC):
     Subclasses must implement template methods for data-source-specific logic.
     """
 
+    def __init__(self, max_workers: int = 8):
+        """
+        Initialize base downloader.
+
+        Args:
+            max_workers: Maximum concurrent workers for parallel downloads.
+                        Set to 1 for sequential mode. Default: 8
+        """
+        self.max_workers = max_workers
+
     def download(
         self,
         ticker: str,
         start_date: str,
         end_date: str,
         save: bool = False,
-        csv_filepath: Optional[str] = None,
+        filepath: Optional[str] = None,
         incremental: bool = True
     ) -> pd.DataFrame:
         """
@@ -38,22 +48,22 @@ class BaseDownloader(ABC):
 
         This method provides two operating modes:
         1. Download-only (save=False): Returns DataFrame without saving to disk
-        2. Download-and-save (save=True): Downloads, saves to CSV, returns DataFrame
+        2. Download-and-save (save=True): Downloads, saves to Parquet, returns DataFrame
 
         Args:
             ticker: Stock ticker symbol (e.g., 'AAPL', 'MSFT')
             start_date: Start date in 'YYYY-MM-DD' format
             end_date: End date in 'YYYY-MM-DD' format (inclusive)
-            save: If True, saves data to csv_filepath. If False, returns DataFrame only.
-            csv_filepath: Path to save CSV file. Required when save=True.
-            incremental: If True and save=True, checks existing CSV and only downloads
+            save: If True, saves data to filepath. If False, returns DataFrame only.
+            filepath: Path to save Parquet file. Required when save=True.
+            incremental: If True and save=True, checks existing Parquet file and only downloads
                         missing dates. If False, re-downloads entire range.
 
         Returns:
             pd.DataFrame: Downloaded data with standardized columns
 
         Raises:
-            ValueError: If save=True but csv_filepath is None
+            ValueError: If save=True but filepath is None
             RequestException: If API request fails after retries
             ValueError: If downloaded data fails validation
 
@@ -66,7 +76,7 @@ class BaseDownloader(ABC):
             df = downloader.download(
                 'AAPL', '2024-01-01', '2024-01-31',
                 save=True,
-                csv_filepath='data/raw/AAPL_options.csv',
+                filepath='data/raw/AAPL_options.parquet',
                 incremental=True
             )
 
@@ -74,15 +84,15 @@ class BaseDownloader(ABC):
             df = downloader.download(
                 'AAPL', '2024-01-01', '2024-01-31',
                 save=True,
-                csv_filepath='data/raw/AAPL_options.csv',
+                filepath='data/raw/AAPL_options.parquet',
                 incremental=False
             )
         """
         # Validate parameters
-        if save and csv_filepath is None:
+        if save and filepath is None:
             raise ValueError(
-                "csv_filepath must be provided when save=True. "
-                "Either provide csv_filepath or set save=False."
+                "filepath must be provided when save=True. "
+                "Either provide filepath or set save=False."
             )
 
         # Route to appropriate handler
@@ -92,7 +102,7 @@ class BaseDownloader(ABC):
         else:
             # Download-and-save mode
             return self._download_and_save(
-                ticker, start_date, end_date, csv_filepath, incremental
+                ticker, start_date, end_date, filepath, incremental
             )
 
     def _download_and_save(
@@ -100,20 +110,20 @@ class BaseDownloader(ABC):
         ticker: str,
         start_date: str,
         end_date: str,
-        csv_filepath: str,
+        filepath: str,
         incremental: bool
     ) -> pd.DataFrame:
         """
         Internal method that delegates to existing incremental download helper.
 
         This method bridges the unified API to the existing download_and_save_with_incremental
-        helper function that handles incremental logic, CSV I/O, and logging.
+        helper function that handles incremental logic, Parquet I/O, and logging.
 
         Args:
             ticker: Stock ticker symbol
             start_date: Start date in 'YYYY-MM-DD' format
             end_date: End date in 'YYYY-MM-DD' format
-            csv_filepath: Path to save CSV file
+            filepath: Path to save Parquet file
             incremental: If True, only download missing dates
 
         Returns:
@@ -126,7 +136,7 @@ class BaseDownloader(ABC):
             ticker=ticker,
             start_date=start_date,
             end_date=end_date,
-            csv_filepath=csv_filepath,
+            filepath=filepath,
             incremental=incremental,
             download_func=self._download_only,
             merge_func=self._merge_data,
@@ -184,7 +194,7 @@ class BaseDownloader(ABC):
         - Datasets: Use options logic (most granular)
 
         Args:
-            existing_df: Previously downloaded data from CSV
+            existing_df: Previously downloaded data from Parquet file
             new_df: Newly downloaded data from API
 
         Returns:

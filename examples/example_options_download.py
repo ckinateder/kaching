@@ -25,7 +25,7 @@ def main():
         start_date='2024-01-15',
         end_date='2024-01-19',
         save=True,
-        csv_filepath='data/raw/AAPL_options_eod.csv',
+        filepath='data/raw/AAPL_options_eod.parquet',
         incremental=True
     )
 
@@ -42,7 +42,7 @@ def main():
         start_date='2024-01-15',
         end_date='2024-02-26',  # Extended range
         save=True,
-        csv_filepath='data/raw/AAPL_options_eod.csv',
+        filepath='data/raw/AAPL_options_eod.parquet',
         incremental=True  # Will only download missing dates
     )
 
@@ -59,10 +59,13 @@ def main():
     print("=" * 60)
 
     # Check what dates are missing
-    existing_df, missing_dates = ThetaDataDownloader.find_missing_dates(
-        csv_filepath='data/raw/AAPL_options_eod.csv',
+    from src.downloaders import find_missing_dates
+    existing_df, missing_dates = find_missing_dates(
+        filepath='data/raw/AAPL_options_eod.parquet',
         start_date='2024-01-01',
-        end_date='2024-01-31'
+        end_date='2024-01-31',
+        date_column='timestamp',
+        parse_timestamp=True
     )
 
     print(f"Found {len(missing_dates)} missing dates")
@@ -80,7 +83,7 @@ def main():
         complete_df = ThetaDataDownloader.merge_options_data(existing_df, new_df)
 
         # Save manually
-        complete_df.to_csv('data/raw/AAPL_options_eod.csv', index=False)
+        complete_df.to_parquet('data/raw/AAPL_options_eod.parquet', index=False)
         print(f"✓ Merged and saved {len(complete_df):,} total contracts")
     else:
         print("No missing dates - all data already exists")
@@ -112,7 +115,7 @@ def main():
     #     start_date='2024-01-01',
     #     end_date='2024-12-31',
     #     save=True,
-    #     csv_filepath='data/raw/SCHW_options_eod.csv',
+    #     filepath='data/raw/SCHW_options_eod.parquet',
     #     incremental=True
     # )
     #

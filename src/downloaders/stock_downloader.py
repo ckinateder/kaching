@@ -33,16 +33,22 @@ class YFinanceDownloader(BaseDownloader):
 
     This downloader follows the same patterns as ThetaDataDownloader:
     - Returns DataFrames (never saves directly)
-    - Supports incremental downloads via CSV checking
+    - Supports incremental downloads via Parquet file checking
     - Retry logic with exponential backoff
     - Progress logging
     - Data validation
     - Graceful error handling
     """
 
-    def __init__(self):
-        """Initialize the yfinance downloader."""
-        pass
+    def __init__(self, max_workers: int = 8):
+        """
+        Initialize the yfinance downloader.
+
+        Args:
+            max_workers: Accepted for API consistency but not used
+                        (stock downloader uses bulk API calls)
+        """
+        super().__init__(max_workers=max_workers)
 
     def _download_only(
         self,

@@ -54,16 +54,16 @@ class TestUtilityFunctions(unittest.TestCase):
         self.assertEqual(dates, ['2024-01-01', '2024-01-02', '2024-01-03'])
 
     def test_find_missing_dates_no_file(self):
-        """Test find_missing_dates when CSV doesn't exist"""
+        """Test find_missing_dates when Parquet file doesn't exist"""
         existing_df, missing = find_missing_dates(
-            '/nonexistent/path.csv', '2024-01-01', '2024-01-05'
+            '/nonexistent/path.parquet', '2024-01-01', '2024-01-05'
         )
         self.assertIsNone(existing_df)
         self.assertEqual(len(missing), 5)
 
     def test_find_missing_dates_with_DECK_stock(self):
-        """Test find_missing_dates using DECK_stock.csv fixture"""
-        fixture_path = 'tests/fixtures/DECK_stock.csv'
+        """Test find_missing_dates using DECK_stock.parquet fixture"""
+        fixture_path = 'tests/fixtures/DECK_stock.parquet'
         existing_df, missing = find_missing_dates(
             fixture_path, '2025-12-01', '2025-12-05'
         )
@@ -92,9 +92,9 @@ class TestOptionsDownloaderStaticMethods(unittest.TestCase):
     """Test static methods of ThetaDataDownloader"""
 
     def setUp(self):
-        """Load DECK_options.csv fixture"""
-        self.options_path = 'tests/fixtures/DECK_options.csv'
-        self.options_df = pd.read_csv(self.options_path)
+        """Load DECK_options.parquet fixture"""
+        self.options_path = 'tests/fixtures/DECK_options.parquet'
+        self.options_df = pd.read_parquet(self.options_path)
 
     def test_merge_options_data_both_empty(self):
         """Test merge when both DataFrames are empty"""
@@ -162,9 +162,9 @@ class TestStockDownloaderMethods(unittest.TestCase):
     """Test methods of YFinanceDownloader"""
 
     def setUp(self):
-        """Load DECK_stock.csv fixture and create downloader instance"""
-        self.stock_path = 'tests/fixtures/DECK_stock.csv'
-        self.stock_df = pd.read_csv(self.stock_path)
+        """Load DECK_stock.parquet fixture and create downloader instance"""
+        self.stock_path = 'tests/fixtures/DECK_stock.parquet'
+        self.stock_df = pd.read_parquet(self.stock_path)
         self.downloader = YFinanceDownloader()
 
     def test_merge_stock_data_deduplicate(self):
@@ -260,10 +260,10 @@ class TestDatasetDownloaderMethods(unittest.TestCase):
 
     def setUp(self):
         """Load DECK fixtures and create dataset downloader"""
-        self.options_path = 'tests/fixtures/DECK_options.csv'
-        self.stock_path = 'tests/fixtures/DECK_stock.csv'
-        self.options_df = pd.read_csv(self.options_path)
-        self.stock_df = pd.read_csv(self.stock_path)
+        self.options_path = 'tests/fixtures/DECK_options.parquet'
+        self.stock_path = 'tests/fixtures/DECK_stock.parquet'
+        self.options_df = pd.read_parquet(self.options_path)
+        self.stock_df = pd.read_parquet(self.stock_path)
         self.downloader = DatasetDownloader()
 
     def test_join_data_basic_merge(self):

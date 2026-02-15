@@ -191,3 +191,18 @@ def calculate_pnl(df: pd.DataFrame) -> pd.DataFrame:
     df['pnl'] = df['bid'] - np.maximum(0, df['strike'] - df['close_at_expiry'])
     df['win'] = df['pnl'] > 0
     return df
+
+def postprocess_dataset(df: pd.DataFrame, moneyness_threshold: tuple[float, float] = (-0.1, 0)) -> pd.DataFrame:
+    """
+    Postprocess dataset.
+
+    Args:
+        df: DataFrame with 'bid', 'strike', 'close_at_expiry' columns.
+        moneyness_threshold: Tuple of (lower, upper) moneyness thresholds.
+    """
+    df = add_moneyness_column(df)
+    df = add_price_at_expiry(df)
+    df = calculate_pnl(df)
+    df = df[df['right'] == 'PUT']
+    df = df[(df['moneyness'] < moneyness_threshold[1]) & (df['moneyness'] > moneyness_threshold[0])]
+    return df

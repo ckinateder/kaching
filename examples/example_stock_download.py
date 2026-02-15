@@ -30,7 +30,7 @@ def main():
         start_date='2024-01-01',
         end_date='2024-01-31',
         save=True,
-        csv_filepath='data/raw/AAPL_stock_prices.csv',
+        filepath='data/raw/AAPL_stock_prices.parquet',
         incremental=True
     )
 
@@ -49,7 +49,7 @@ def main():
         start_date='2024-01-01',
         end_date='2024-12-31',
         save=True,
-        csv_filepath='data/raw/SCHW_stock_prices.csv',
+        filepath='data/raw/SCHW_stock_prices.parquet',
         incremental=True
     )
 
@@ -66,7 +66,7 @@ def main():
         start_date='2024-01-01',
         end_date='2024-02-29',  # Extend into February
         save=True,
-        csv_filepath='data/raw/AAPL_stock_prices.csv',
+        filepath='data/raw/AAPL_stock_prices.parquet',
         incremental=True  # Will only download missing dates
     )
 
@@ -96,7 +96,7 @@ def main():
 
     # Check what dates are missing using the utility function directly
     existing_df, missing_dates = find_missing_dates(
-        csv_filepath='data/raw/AAPL_stock_prices.csv',
+        filepath='data/raw/AAPL_stock_prices.parquet',
         start_date='2024-01-01',
         end_date='2024-03-31',
         date_column='date',
@@ -121,7 +121,7 @@ def main():
         complete_df = YFinanceDownloader.merge_stock_data(existing_df, new_df)
 
         # Save manually
-        complete_df.to_csv('data/raw/AAPL_stock_prices.csv', index=False)
+        complete_df.to_parquet('data/raw/AAPL_stock_prices.parquet', index=False)
         print(f"✓ Merged and saved {len(complete_df):,} total trading days")
     else:
         print("No missing dates - all data already exists")

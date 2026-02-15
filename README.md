@@ -37,16 +37,14 @@ from src.downloaders.options_downloader import ThetaDataDownloader
 downloader = ThetaDataDownloader()
 
 # Download options data
-df = downloader.download_options_eod_data(
+df = downloader.download(
     ticker='AAPL',
     start_date='2024-01-01',
     end_date='2024-12-31',
-    output_dir='data/raw',
-    check_existing=True  # Enables incremental downloads
+    save=True,
+    filepath='data/raw/AAPL_options_eod.parquet',
+    incremental=True  # Enables incremental downloads
 )
-
-# Save to CSV
-df.to_csv('data/raw/AAPL_options_eod.csv', index=False)
 ```
 
 ### Download Stock Prices
@@ -60,16 +58,14 @@ from src.downloaders.stock_downloader import YFinanceDownloader
 downloader = YFinanceDownloader()
 
 # Download stock prices
-df = downloader.download_stock_prices(
+df = downloader.download(
     ticker='AAPL',
     start_date='2024-01-01',
     end_date='2024-12-31',
-    output_dir='data/raw',
-    check_existing=True  # Enables incremental downloads
+    save=True,
+    filepath='data/raw/AAPL_stock_prices.parquet',
+    incremental=True  # Enables incremental downloads
 )
-
-# Save to CSV
-df.to_csv('data/raw/AAPL_stock_prices.csv', index=False)
 ```
 
 **Stock prices are used for:**
@@ -102,10 +98,10 @@ The `close` field is used for OTM% and P&L calculations. The `adjusted_close` ac
 ```
 data/
 ├── raw/                      # Raw downloaded data (Phase 1.1)
-│   ├── AAPL_options_eod.csv       # Options data
-│   ├── AAPL_stock_prices.csv      # Stock prices
-│   ├── MSFT_options_eod.csv
-│   ├── MSFT_stock_prices.csv
+│   ├── AAPL_options_eod.parquet       # Options data
+│   ├── AAPL_stock_prices.parquet      # Stock prices
+│   ├── MSFT_options_eod.parquet
+│   ├── MSFT_stock_prices.parquet
 │   └── ...
 └── processed/                # Transformed data (Phase 1.1a - future)
 ```
