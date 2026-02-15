@@ -94,16 +94,19 @@ class BaseDownloader(ABC):
                 "filepath must be provided when save=True. "
                 "Either provide filepath or set save=False."
             )
-
-        # Route to appropriate handler
-        if not save:
-            # Download-only mode
-            return self._download_only(ticker, start_date, end_date)
-        else:
-            # Download-and-save mode
-            return self._download_and_save(
-                ticker, start_date, end_date, filepath, incremental
-            )
+        
+        try:
+            # Route to appropriate handler
+            if not save:
+                # Download-only mode
+                return self._download_only(ticker, start_date, end_date)
+            else:
+                # Download-and-save mode
+                return self._download_and_save(
+                    ticker, start_date, end_date, filepath, incremental
+                )
+        except KeyError as e:
+            print("Interrupt")
 
     def _download_and_save(
         self,

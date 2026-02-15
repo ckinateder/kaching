@@ -21,7 +21,7 @@ if __name__ == "__main__":
             end_date='2026-02-14',
             save=True,
             filepath=os.path.join('data', 'raw', f'{ticker}_dataset.parquet'),
-            incremental=False
+            incremental=True
         )
         
         df = postprocess_dataset(df, moneyness_threshold=(-0.1, 0))

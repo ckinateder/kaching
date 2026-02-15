@@ -122,24 +122,26 @@ def create_output_directory(filepath: str) -> None:
     Path(filepath).parent.mkdir(parents=True, exist_ok=True)
 
 
-def find_contiguous_date_ranges(dates: list) -> list:
+def find_contiguous_date_ranges(dates: list, max_gap_days: int = 7) -> list:
     """
     Group a list of date strings into contiguous ranges.
 
     Takes a list of date strings and returns a list of (start, end) tuples
-    representing contiguous date ranges. This helps optimize downloads by
-    identifying gaps in existing data.
+    representing contiguous date ranges. Small gaps (weekends, holidays) are
+    merged to avoid creating too many tiny ranges.
 
     Args:
         dates: List of date strings in 'YYYY-MM-DD' format (must be sorted)
+        max_gap_days: Maximum gap size to merge (default: 7 days for weekends/holidays)
+                     Gaps larger than this will create separate ranges.
 
     Returns:
         List of (start_date, end_date) tuples representing contiguous ranges
 
     Example:
         >>> dates = ['2024-01-01', '2024-01-02', '2024-01-05', '2024-01-06', '2024-01-07']
-        >>> find_contiguous_date_ranges(dates)
-        [('2024-01-01', '2024-01-02'), ('2024-01-05', '2024-01-07')]
+        >>> find_contiguous_date_ranges(dates, max_gap_days=7)
+        [('2024-01-01', '2024-01-07')]  # Merged because gap is only 2 days
     """
     if not dates:
         return []
@@ -153,12 +155,14 @@ def find_contiguous_date_ranges(dates: list) -> list:
     range_end = date_objects[0]
 
     for i in range(1, len(date_objects)):
-        # Check if current date is exactly 1 day after the previous
-        if (date_objects[i] - date_objects[i-1]).days == 1:
+        gap_days = (date_objects[i] - date_objects[i-1]).days
+
+        # Merge if gap is small (weekends, holidays) or consecutive
+        if gap_days <= max_gap_days:
             # Extend current range
             range_end = date_objects[i]
         else:
-            # Gap found, save current range and start new one
+            # Large gap found, save current range and start new one
             ranges.append((
                 range_start.strftime('%Y-%m-%d'),
                 range_end.strftime('%Y-%m-%d')

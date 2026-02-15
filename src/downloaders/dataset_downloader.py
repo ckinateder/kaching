@@ -68,12 +68,7 @@ class DatasetDownloader(BaseDownloader):
         # Validate date inputs
         validate_date_range(start_date, end_date)
 
-        # Download options data
-        print(f"\n{'='*60}")
-        print(f"Downloading dataset for {ticker}")
-        print(f"Date range: {start_date} to {end_date}")
-        print(f"{'='*60}")
-
+        # Download options data (quiet mode - downloaders handle their own logging)
         options_df = self.options_downloader.download(
             ticker=ticker,
             start_date=start_date,
@@ -90,15 +85,9 @@ class DatasetDownloader(BaseDownloader):
         # Combine the data
         combined_df = self._join_data(options_df, stock_df)
 
-        # Final summary
-        print(f"\n{'='*60}")
-        print(f"Dataset download complete!")
-        print(f"{'='*60}")
-        print(f"Combined data:")
-        print(f"  Total records: {len(combined_df):,}")
-        print(f"  Date range: {start_date} to {end_date}")
-        print(f"  Unique expirations: {combined_df['expiration'].nunique()}")
-        print(f"{'='*60}")
+        # Only show summary if we got data
+        if not combined_df.empty:
+            print(f"\n✓ Dataset combined: {len(combined_df):,} records, {combined_df['expiration'].nunique()} expirations")
 
         return combined_df
 
