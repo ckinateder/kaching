@@ -66,17 +66,27 @@ class ThetaDataDownloader(BaseDownloader):
         session: Requests session for connection reuse
     """
 
-    def __init__(self, base_url: str = 'http://127.0.0.1:25503/v3', max_workers: int = 8):
+    def __init__(
+        self,
+        base_url: str = 'http://127.0.0.1:25503/v3',
+        max_workers: int = 8,
+        rate_limit_delay: float = 0.1
+    ):
         """
         Initialize the Theta Data downloader.
 
         Args:
             base_url: Base URL for the Theta Data API (default: localhost terminal)
             max_workers: Maximum concurrent workers for parallel downloads (default: 8)
+            rate_limit_delay: Minimum delay between requests in seconds (default: 0.1 = 10 req/s)
+                             Set to 0 to disable rate limiting
         """
         super().__init__(max_workers=max_workers)
         self.base_url = base_url
         self.session = requests.Session()
+        self.rate_limit_delay = rate_limit_delay
+        self._last_request_time = 0
+        self._request_lock = None  # Will be initialized in concurrent mode
 
     def _download_only(
         self,
@@ -170,18 +180,25 @@ class ThetaDataDownloader(BaseDownloader):
 
                 if response.status_code == 200:
                     return response.text
+                elif response.status_code == 429:
+                    # Rate limit - more aggressive backoff
+                    if attempt < max_retries - 1:
+                        backoff_time = initial_backoff * (3 ** attempt)  # 1s, 3s, 9s
+                        tqdm.write(f"  ⚠ Rate limit hit (429). Backing off {backoff_time:.0f}s...")
+                        time.sleep(backoff_time)
+                    else:
+                        raise Exception(f"Rate limit (429) - reduce max_workers or increase rate_limit_delay")
                 else:
-                    error_msg = f"API returned {response.status_code}: {response.text[:200]}"
+                    error_msg = f"API returned {response.status_code}"
 
-                    # Don't retry on 4xx client errors (except 429 rate limit)
-                    if 400 <= response.status_code < 500 and response.status_code != 429:
+                    # Don't retry on 4xx client errors (except 429 already handled)
+                    if 400 <= response.status_code < 500:
                         raise Exception(error_msg)
 
-                    # Retry on 5xx server errors and 429 rate limit
+                    # Retry on 5xx server errors
                     if attempt < max_retries - 1:
                         backoff_time = initial_backoff * (2 ** attempt)
-                        print(f"  {error_msg}")
-                        print(f"  Retrying in {backoff_time}s... (attempt {attempt + 1}/{max_retries})")
+                        tqdm.write(f"  {error_msg}. Retrying in {backoff_time}s...")
                         time.sleep(backoff_time)
                     else:
                         raise Exception(error_msg)
@@ -234,6 +251,27 @@ class ThetaDataDownloader(BaseDownloader):
 
         return True
 
+    def _rate_limit(self):
+        """Enforce rate limiting between requests."""
+        if self.rate_limit_delay <= 0:
+            return
+
+        import threading
+
+        # Thread-safe rate limiting
+        if self._request_lock is None:
+            self._request_lock = threading.Lock()
+
+        with self._request_lock:
+            current_time = time.time()
+            time_since_last = current_time - self._last_request_time
+
+            if time_since_last < self.rate_limit_delay:
+                sleep_time = self.rate_limit_delay - time_since_last
+                time.sleep(sleep_time)
+
+            self._last_request_time = time.time()
+
     def _download_single_date(
         self,
         ticker: str,
@@ -254,6 +292,9 @@ class ThetaDataDownloader(BaseDownloader):
             - If failed: (None, error_string)
         """
         try:
+            # Rate limiting
+            self._rate_limit()
+
             # Format date as YYYYMMDD for API
             date_str = pd.to_datetime(date).strftime('%Y%m%d')
 
@@ -306,6 +347,8 @@ class ThetaDataDownloader(BaseDownloader):
         """Sequential download mode (original behavior)."""
         all_data = []
         missing_dates = 0
+        errors = []
+        rate_limit_failures = []
 
         pbar = tqdm(all_dates, desc=f"{ticker} options", unit="day")
         for date in pbar:
@@ -317,7 +360,28 @@ class ThetaDataDownloader(BaseDownloader):
                 missing_dates += 1
                 pbar.set_postfix(missing=missing_dates, refresh=False)
             elif error:
-                tqdm.write(f"[{date}] {error}")
+                if "Rate limit (429)" in error:
+                    rate_limit_failures.append(date)
+                    errors.append((date, error))
+                else:
+                    errors.append((date, error))
+                    tqdm.write(f"[{date}] {error}")
+
+        # Retry rate-limited dates with more conservative settings
+        if rate_limit_failures:
+            print(f"\n🔄 Retrying {len(rate_limit_failures)} rate-limited dates with slower settings...")
+            retry_data = self._retry_failed_dates(ticker, rate_limit_failures)
+            if retry_data:
+                all_data.extend(retry_data)
+
+        # Print error summary if any errors remain
+        remaining_errors = [e for e in errors if e[0] not in rate_limit_failures or e[0] in [d for d, _ in errors]]
+        if remaining_errors:
+            print(f"\n⚠ {len(remaining_errors)} dates failed to download:")
+            for date, error in remaining_errors[:5]:
+                print(f"  - {date}: {error}")
+            if len(remaining_errors) > 5:
+                print(f"  ... and {len(remaining_errors) - 5} more")
 
         return self._finalize_download(all_data, ticker, start_date, missing_dates)
 
@@ -333,6 +397,7 @@ class ThetaDataDownloader(BaseDownloader):
         all_data = []
         missing_dates = 0
         errors = []
+        rate_limit_failures = []  # Track dates that failed due to rate limits
 
         # Create thread pool
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
@@ -356,6 +421,10 @@ class ThetaDataDownloader(BaseDownloader):
                             if "No data found (API 472)" in error:
                                 missing_dates += 1
                                 pbar.set_postfix(missing=missing_dates, refresh=False)
+                            elif "Rate limit (429)" in error:
+                                # Track rate limit failures for retry
+                                rate_limit_failures.append(date)
+                                errors.append((date, error))
                             else:
                                 errors.append((date, error))
                                 tqdm.write(f"[{date}] {error}")
@@ -366,7 +435,17 @@ class ThetaDataDownloader(BaseDownloader):
 
                     pbar.update(1)
 
-        # Print error summary if any non-trivial errors
+        # Retry rate-limited dates with more conservative settings
+        if rate_limit_failures:
+            print(f"\n🔄 Retrying {len(rate_limit_failures)} rate-limited dates with slower settings...")
+            retry_data = self._retry_failed_dates(ticker, rate_limit_failures)
+            if retry_data:
+                all_data.extend(retry_data)
+                # Remove successfully retried dates from errors list
+                retry_dates_set = {date for date, _ in retry_data} if retry_data else set()
+                errors = [(d, e) for d, e in errors if d not in retry_dates_set]
+
+        # Print error summary if any non-trivial errors remain
         if errors:
             print(f"\n⚠ {len(errors)} dates failed to download:")
             for date, error in errors[:5]:  # Show first 5
@@ -375,6 +454,56 @@ class ThetaDataDownloader(BaseDownloader):
                 print(f"  ... and {len(errors) - 5} more")
 
         return self._finalize_download(all_data, ticker, start_date, missing_dates)
+
+    def _retry_failed_dates(
+        self,
+        ticker: str,
+        failed_dates: list
+    ) -> list:
+        """
+        Retry failed dates with more conservative settings.
+
+        Uses sequential mode with increased delay to avoid rate limits.
+
+        Args:
+            ticker: Stock symbol
+            failed_dates: List of date strings that failed due to rate limits
+
+        Returns:
+            List of (date, dataframe) tuples for successful retries
+        """
+        # Store original settings
+        original_delay = self.rate_limit_delay
+
+        # Use more conservative settings for retry
+        # Triple the delay and force sequential mode (already sequential in this method)
+        retry_delay = max(0.3, self.rate_limit_delay * 3)
+        self.rate_limit_delay = retry_delay
+
+        print(f"  Using sequential mode with {retry_delay}s delay between requests")
+
+        successful_retries = []
+        retry_failures = 0
+
+        for date in tqdm(failed_dates, desc=f"  Retrying {ticker}", unit="day"):
+            df, error = self._download_single_date(ticker, date)
+
+            if df is not None:
+                successful_retries.append(df)
+            else:
+                retry_failures += 1
+                if error and "Rate limit (429)" not in error:
+                    tqdm.write(f"  [{date}] Still failed: {error}")
+
+        # Restore original settings
+        self.rate_limit_delay = original_delay
+
+        if successful_retries:
+            print(f"  ✓ Successfully retried {len(successful_retries)}/{len(failed_dates)} dates")
+        if retry_failures:
+            print(f"  ✗ {retry_failures} dates still failed after retry")
+
+        return successful_retries
 
     def _finalize_download(
         self,

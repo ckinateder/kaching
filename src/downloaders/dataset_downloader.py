@@ -22,16 +22,26 @@ class DatasetDownloader(BaseDownloader):
     stock prices.
     """
 
-    def __init__(self, options_base_url: str = 'http://127.0.0.1:25503/v3', max_workers: int = 8):
+    def __init__(
+        self,
+        options_base_url: str = 'http://127.0.0.1:25503/v3',
+        max_workers: int = 8,
+        rate_limit_delay: float = 0.1
+    ):
         """
         Initialize the dataset downloader.
 
         Args:
             options_base_url: Base URL for Theta Data API (default: localhost terminal)
             max_workers: Maximum concurrent workers for options downloads (default: 8)
+            rate_limit_delay: Minimum delay between API requests in seconds (default: 0.1)
         """
         super().__init__(max_workers=max_workers)
-        self.options_downloader = ThetaDataDownloader(base_url=options_base_url, max_workers=max_workers)
+        self.options_downloader = ThetaDataDownloader(
+            base_url=options_base_url,
+            max_workers=max_workers,
+            rate_limit_delay=rate_limit_delay
+        )
         self.stock_downloader = YFinanceDownloader(max_workers=max_workers)
 
     def _download_only(

@@ -10,7 +10,7 @@ if __name__ == "__main__":
     
     tickers.remove('VIX')
 
-    downloader = DatasetDownloader(max_workers=20)
+    downloader = DatasetDownloader(max_workers=20, rate_limit_delay=0.01)
 
     print(f"Downloading datasets for {len(tickers)} tickers")
     for i, ticker in enumerate(tickers):
@@ -21,7 +21,7 @@ if __name__ == "__main__":
             end_date='2026-02-14',
             save=True,
             filepath=os.path.join('data', 'raw', f'{ticker}_dataset.parquet'),
-            incremental=True
+            incremental=False
         )
         
         df = postprocess_dataset(df, moneyness_threshold=(-0.1, 0))
