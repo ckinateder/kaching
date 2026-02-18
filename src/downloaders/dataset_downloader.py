@@ -5,6 +5,7 @@ This module provides a DatasetDownloader class that downloads both options data
 and stock prices for building a complete dataset over a specified date range.
 """
 
+from typing import Optional
 import pandas as pd
 
 from .base_downloader import BaseDownloader
@@ -48,7 +49,8 @@ class DatasetDownloader(BaseDownloader):
         self,
         ticker: str,
         start_date: str,
-        end_date: str
+        end_date: str,
+        dates_to_download: Optional[list] = None
     ) -> pd.DataFrame:
         """
         Download both options data and stock prices, then join them.
@@ -57,6 +59,8 @@ class DatasetDownloader(BaseDownloader):
             ticker: Stock symbol (e.g., 'AAPL')
             start_date: Start date in 'YYYY-MM-DD' format
             end_date: End date in 'YYYY-MM-DD' format (inclusive)
+            dates_to_download: Optional list of specific dates to download. If provided,
+                             only these dates will be downloaded for options data.
 
         Returns:
             Combined DataFrame with options data and stock prices
@@ -69,17 +73,22 @@ class DatasetDownloader(BaseDownloader):
         validate_date_range(start_date, end_date)
 
         # Download options data (quiet mode - downloaders handle their own logging)
-        options_df = self.options_downloader.download(
+        # CRITICAL: Call _download_only directly to pass dates_to_download parameter
+        # This ensures we download only the specific missing dates, not the entire merged range
+        options_df = self.options_downloader._download_only(
             ticker=ticker,
             start_date=start_date,
             end_date=end_date,
+            dates_to_download=dates_to_download
         )
 
         # Download stock prices
+        # CRITICAL: Must pass save=False explicitly to avoid triggering stock_downloader's own incremental logic
         stock_df = self.stock_downloader.download(
             ticker=ticker,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            save=False  # Explicitly set to False to ensure we get _download_only, not incremental logic
         )
 
         # Combine the data

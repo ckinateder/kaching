@@ -3,6 +3,7 @@ from src.postprocess import postprocess_dataset
 import os
 from src.downloaders import get_weekly_options_tickers
 from tqdm import tqdm
+import random
 
 if __name__ == "__main__":
     #tickers = ["TTD", "DECK", "MRK"]
@@ -10,6 +11,7 @@ if __name__ == "__main__":
     
     tickers.remove('VIX')
 
+    random.shuffle(tickers)
     downloader = DatasetDownloader(max_workers=20, rate_limit_delay=0.01)
 
     print(f"Downloading datasets for {len(tickers)} tickers")

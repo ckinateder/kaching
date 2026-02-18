@@ -236,18 +236,30 @@ def download_and_save_with_incremental(
             print(f"✓ All data already exists for {ticker} ({start_date} to {end_date})")
             return existing_df
 
-        # Find contiguous ranges of missing dates
+        # Find contiguous ranges of missing dates (for display purposes)
         missing_ranges = find_contiguous_date_ranges(missing_dates)
 
         print(f"Found existing data. Need to download {len(missing_ranges)} date range(s) "
               f"covering {len(missing_dates)} calendar days.")
 
-        # Download each contiguous range separately
+        # CRITICAL FIX: Download only the missing dates, not the entire merged range
+        # Check if download_func accepts dates_to_download parameter (for options downloader)
+        import inspect
+        sig = inspect.signature(download_func)
+        has_dates_param = 'dates_to_download' in sig.parameters
+        
         new_data_frames = []
-        for range_start, range_end in tqdm(missing_ranges, desc=f"{ticker} download", unit="range"):
-            range_df = download_func(ticker, range_start, range_end)
+        if has_dates_param:
+            # Download only the specific missing dates
+            range_df = download_func(ticker, start_date, end_date, dates_to_download=missing_dates)
             if not range_df.empty:
                 new_data_frames.append(range_df)
+        else:
+            # Fallback: Download each contiguous range separately (for stock downloader)
+            for range_start, range_end in tqdm(missing_ranges, desc=f"{ticker} download", unit="range"):
+                range_df = download_func(ticker, range_start, range_end)
+                if not range_df.empty:
+                    new_data_frames.append(range_df)
 
         # Combine all downloaded data
         if new_data_frames:

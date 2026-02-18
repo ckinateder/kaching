@@ -92,7 +92,8 @@ class ThetaDataDownloader(BaseDownloader):
         self,
         ticker: str,
         start_date: str,
-        end_date: str
+        end_date: str,
+        dates_to_download: Optional[list] = None
     ) -> pd.DataFrame:
         """
         Download EOD options data with Greeks for all expirations.
@@ -103,6 +104,9 @@ class ThetaDataDownloader(BaseDownloader):
             ticker: Stock symbol (e.g., 'AAPL')
             start_date: Start date in 'YYYY-MM-DD' format
             end_date: End date in 'YYYY-MM-DD' format (inclusive)
+            dates_to_download: Optional list of specific dates to download in 'YYYY-MM-DD' format.
+                             If provided, only these dates will be downloaded (ignoring start_date/end_date range).
+                             If None, downloads all dates in the start_date to end_date range.
 
         Returns:
             pd.DataFrame with options data for all dates in range
@@ -111,22 +115,27 @@ class ThetaDataDownloader(BaseDownloader):
             ValueError: If date format is invalid or end_date < start_date
             Exception: If API requests fail after all retries
         """
-        # Validate date inputs
-        validate_date_range(start_date, end_date)
+        # If specific dates provided, use those; otherwise use full range
+        if dates_to_download:
+            all_dates = dates_to_download
+        else:
+            # Validate date inputs
+            validate_date_range(start_date, end_date)
+            # Generate full date range
+            all_dates = generate_date_range(start_date, end_date)
 
-        # Generate full date range
-        all_dates = generate_date_range(start_date, end_date)
         total_days = len(all_dates)
-
         print(f"\nDownloading {ticker} options data for {total_days} days...")
 
         # Choose execution mode
+        # Use start_date from first date in all_dates for filtering (needed for _finalize_download)
+        first_date = all_dates[0] if all_dates else start_date
         if self.max_workers == 1:
             # Sequential mode (original behavior)
-            return self._download_sequential(ticker, all_dates, start_date)
+            return self._download_sequential(ticker, all_dates, first_date)
         else:
             # Concurrent mode (new behavior)
-            return self._download_concurrent(ticker, all_dates, start_date)
+            return self._download_concurrent(ticker, all_dates, first_date)
 
     # Abstract method implementations
 
