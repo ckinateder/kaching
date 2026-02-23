@@ -145,6 +145,56 @@ class DatasetDownloader(BaseDownloader):
 
         return combined_df
 
+    def _download_and_save(
+        self,
+        ticker: str,
+        start_date: str,
+        end_date: str,
+        filepath: str,
+        incremental: bool
+    ) -> pd.DataFrame:
+        """
+        Override base class to save options, stock, and dataset each to their own folder.
+
+        Expected filepath: data/raw/dataset/<TICKER>.parquet
+        Sibling folders:   data/raw/option/<TICKER>.parquet
+                           data/raw/stock/<TICKER>.parquet
+        """
+        from pathlib import Path
+        from . import create_output_directory
+
+        filepath = Path(filepath)
+        base_dir = filepath.parent.parent  # data/raw/
+
+        options_path = base_dir / 'option' / filepath.name
+        stock_path   = base_dir / 'stock'  / filepath.name
+
+        # Sub-downloaders handle their own incremental logic
+        options_df = self.options_downloader.download(
+            ticker=ticker,
+            start_date=start_date,
+            end_date=end_date,
+            save=True,
+            filepath=str(options_path),
+            incremental=incremental
+        )
+        stock_df = self.stock_downloader.download(
+            ticker=ticker,
+            start_date=start_date,
+            end_date=end_date,
+            save=True,
+            filepath=str(stock_path),
+            incremental=incremental
+        )
+
+        combined_df = self._join_data(options_df, stock_df)
+
+        create_output_directory(str(filepath))
+        combined_df.to_parquet(str(filepath), index=False)
+        print(f"✓ Saved {len(combined_df):,} combined records to {filepath}")
+
+        return combined_df
+
     # Abstract method implementations
 
     def _merge_data(

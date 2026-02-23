@@ -23,7 +23,6 @@ STOCK_PRICE_FIELDS = [
     'high',            # Daily high
     'low',             # Daily low
     'volume',          # Trading volume
-    'adjusted_close'   # Adjusted for splits/dividends
 ]
 
 
@@ -197,7 +196,7 @@ class YFinanceDownloader(BaseDownloader):
         Standardize yfinance column names to match our schema.
 
         yfinance returns columns: Open, High, Low, Close, Volume, Dividends, Stock Splits
-        We need: symbol, date, close, open, high, low, volume, adjusted_close
+        We need: symbol, date, close, open, high, low, volume
 
         Args:
             df: Raw DataFrame from yfinance

@@ -7,10 +7,10 @@ from src.postprocess import add_moneyness, add_pnl, add_price_at_expiry
 
 
 if __name__ == "__main__":
-    ticker = "TTD"
+    ticker = "DECK"
     moneyness_threshold = (-0.2, 0)
 
-    raw_df = pd.read_parquet(os.path.join("data", "raw", f"{ticker}_dataset.parquet"))
+    raw_df = pd.read_parquet(os.path.join("data", "raw", "dataset", f"{ticker}.parquet"))
     funnel = [("raw", len(raw_df))]
 
     # Exclude rows where yfinance (split-adjusted) and Theta prices are on different scales

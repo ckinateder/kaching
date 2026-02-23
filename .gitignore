@@ -7,3 +7,4 @@ api-thetadata
 **/__pycache__
 CLAUDE.md
 .env
+datasets.tar.gz

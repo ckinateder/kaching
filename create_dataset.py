@@ -23,7 +23,7 @@ if __name__ == "__main__":
             start_date='2021-01-01',
             end_date='2026-02-14',
             save=True,
-            filepath=os.path.join('data', 'raw', f'{ticker}_dataset.parquet'),
+            filepath=os.path.join('data', 'raw', 'dataset', f'{ticker}.parquet'),
             incremental=True
         )
         

@@ -29,22 +29,32 @@ Start Theta Data Terminal on localhost:25503 (for options data).
 
 ### Download Data
 
+When `save=True`, `DatasetDownloader` writes three files automatically:
+
+```
+data/raw/
+├── dataset/AAPL.parquet   # Combined (options + stock prices joined)
+├── option/AAPL.parquet    # Raw options contracts
+└── stock/AAPL.parquet     # Daily stock prices
+```
+
 ```python
 from src.downloaders import DatasetDownloader
 
-# Download options + stock data for a ticker
-downloader = DatasetDownloader(max_workers=4)  # Concurrent downloads
+downloader = DatasetDownloader(max_workers=8)
 df = downloader.download(
     ticker='AAPL',
     start_date='2024-01-01',
     end_date='2024-12-31',
     save=True,
-    filepath='data/raw/AAPL_dataset.parquet',
-    incremental=True  # Only download missing dates
+    filepath='data/raw/dataset/AAPL.parquet',
+    incremental=True  # Only downloads missing dates
 )
 ```
 
 **Performance:** 6-7x faster with concurrent downloads (8 workers default)
+
+Incremental state is tracked independently per folder — on subsequent runs, `option/` and `stock/` are updated with only new dates, and the `dataset/` file is rebuilt from the full joined data (join is fast; API calls are what's slow).
 
 ### Individual Downloaders
 
@@ -60,47 +70,10 @@ downloader = YFinanceDownloader()
 df = downloader.download('AAPL', '2024-01-01', '2024-12-31')
 ```
 
-## Data Storage
-
-```
-data/raw/
-├── AAPL_options_eod.parquet    # Options data
-├── AAPL_stock_prices.parquet   # Stock prices
-├── AAPL_dataset.parquet        # Combined
-└── ...
-```
-
 ## Usage
 
 Download the full dataset for every ticker that supports weekly options. This requires a Theta Data Terminal running on `localhost:25503`.
 
-```python
-from src.downloaders.dataset_downloader import DatasetDownloader
-from src.postprocess import postprocess_dataset
-import os
-from src.downloaders import get_weekly_options_tickers
-from tqdm import tqdm
-import random
-from time import sleep
-
-if __name__ == "__main__":
-    #tickers = ["TTD", "DECK", "MRK"]
-    tickers, data = get_weekly_options_tickers()
-    
-    tickers.remove('VIX')
-
-    random.shuffle(tickers)
-    downloader = DatasetDownloader(max_workers=20, rate_limit_delay=0.01)
-
-    print(f"Downloading datasets for {len(tickers)} tickers")
-    for i, ticker in enumerate(tickers):
-        print(f"Downloading dataset for {ticker} ({i+1}/{len(tickers)})")
-        df = downloader.download(
-            ticker=ticker,
-            start_date='2021-01-01',
-            end_date='2026-02-14',
-            save=True,
-            filepath=os.path.join('data', 'raw', f'{ticker}_dataset.parquet'),
-            incremental=True
-        )     
+```bash
+python create_dataset.py
 ```

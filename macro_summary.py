@@ -66,15 +66,15 @@ def _process_ticker(path: Path) -> dict | None:
         "n_quotes": len(df),
         "avg_iv": f"{df['implied_vol'].mean() * 100:.0f}%",
         "best_bucket": best_bucket,
-        "best_bucket_pnl": f"${best_bucket_pnl:.2f}",
+        "best_bucket_avg_pnl": f"${best_bucket_pnl:.2f}",
         "latest_price": f"${latest_price:.2f}",
     }
     return out
 
 if __name__ == "__main__":
-    paths = sorted(Path("data/raw").glob("*_dataset.parquet"))
+    paths = sorted(Path("data/raw/dataset").glob("*.parquet"))
     if not paths:
-        print("No *_dataset.parquet files found in data/raw/")
+        print("No *.parquet files found in data/raw/dataset")
     else:
         rows = []
         with ThreadPoolExecutor(max_workers=18) as executor:
