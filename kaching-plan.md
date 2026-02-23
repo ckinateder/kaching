@@ -43,38 +43,54 @@ The tool is optimized for Mode 2 - quick Thursday morning analysis of multiple a
 
 **Core Transformations:**
 
+0. **Stock split price alignment filter** *(discovered in implementation)*
+   - Theta Data's `underlying_price` and yfinance's `underlying_close` are on different scales
+     when a stock has had a split — yfinance backward-adjusts all historical prices, Theta does not
+   - This causes P&L calculations to be wildly wrong for pre-split data (strikes in pre-split dollars,
+     expiry price in post-split dollars → fictional losses of hundreds of dollars per share)
+   - Fix: filter rows where `underlying_price / underlying_close` is outside 0.9–1.1
+   - This automatically excludes the corrupted historical window for any ticker that has split;
+     the cutoff date is ticker-specific and requires no manual configuration
+   - Side effect: effective history is shorter for split tickers (e.g. GOOG data only usable from Jul 2022,
+     DECK from Sep 2024)
+
 1. **Filter to weekly options only**
-   - Restrict to records where DTE ≤ 9 days
+   - DTE 6–9 days (targets next-week expiry; 7 = Friday entry, 8 = Thursday entry, ±1 for edge cases)
+   - This is the largest single row reduction (~90% of Thu/Fri rows) because each day has ~20
+     expiration windows available; only the 6–9 DTE window is kept
    - This automatically excludes stocks without weekly options
-   - Removes monthlies and longer-dated options
 
 2. **Add temporal features**
    - Day of week (0=Monday, 6=Sunday)
    - Restrict analysis to Thursdays (day 3) and Fridays (day 4)
-   - These represent 8 DTE and 7 DTE entries for next week's expiration
+   - These represent 7–8 DTE entries for next week's expiration
 
 3. **Join stock price data**
-   - Add stock closing price on quote_date (entry price)
-   - Add stock closing price on expiry_date (settlement price)
-   - Calculate if option finished ITM or OTM
+   - `underlying_price` (Theta, intraday): used for moneyness calculation at quote time
+   - `underlying_close` (yfinance): used as settlement price at expiry via date-keyed lookup
+   - Both must be in the same price scale (enforced by step 0)
 
 4. **Apply base filters**
-   - Strike < stock_price on quote_date (OTM puts only)
-   - Bid ≥ $0.05 (minimum viable premium)
-   - Bid-ask spread / bid < 30% (liquidity check)
-   - Volume ≥ 10, Open Interest ≥ 50 (activity filters)
+   - Puts only (`right == 'PUT'`)
+   - OTM only: moneyness between −20% and 0% (strike < underlying_price)
+   - Bid > 0 (no market bid = untradeable; options with $0 bid cannot be sold)
+   - *Deferred:* bid-ask spread check, volume ≥ 10, open interest ≥ 50 (to be added once base
+     pipeline is validated)
 
-5. **Calculate key metrics**
-   - **OTM%** = (stock_price - strike) / stock_price × 100
-   - **P&L** = bid - max(0, strike - stock_price_expiry)
+5. **Dedup**
+   - Multiple intraday quotes exist for the same (date, strike, expiry) — keep the last quote of the day
+   - Ensures one row per tradeable opportunity
+
+6. **Calculate key metrics**
+   - **OTM%** = abs(moneyness) × 100 = (underlying_price − strike) / underlying_price × 100
+   - **P&L** = bid − max(0, strike − close_at_expiry)
    - **Win** = boolean (P&L > 0)
 
-6. **Assign OTM buckets**
-   - Create categorical buckets: 0.0-0.5%, 0.5-1.0%, 1.0-1.5%, etc.
-   - Use 0.5% increments from 0% to 5% OTM
+7. **Assign OTM buckets**
+   - 0.5% increments from 0% to 5% OTM
    - Bucket labels: "0.0-0.5%", "0.5-1.0%", "1.0-1.5%", etc.
 
-**Output:** Clean dataset with ~100-200k records (all stocks, all valid weekly puts over 1 year)
+**Output:** Per-ticker filtered dataset of tradeable weekly put opportunities with P&L calculated
 
 ---
 
@@ -652,7 +668,9 @@ Set up alerts:
 3. **Corporate actions**
    - Flag stocks near earnings (shouldn't appear in weekly data anyway)
    - Detect dividend dates
-   - Handle splits in historical data
+   - ~~Handle splits in historical data~~ → **RESOLVED:** split price mismatch between Theta and
+     yfinance is detected and excluded via the `underlying_price / underlying_close` ratio filter
+     in Phase 1.1a step 0. No manual split tracking needed.
 
 4. **Data quality issues**
    - Identify and exclude obvious errors (negative premiums, etc.)
@@ -986,6 +1004,6 @@ Set up alerts:
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** 2026-01-16  
-**Status:** Ready for implementation
+**Document Version:** 1.1
+**Last Updated:** 2026-02-22
+**Status:** Phase 1.1a in progress — pipeline implemented in `main.py`, per-ticker aggregation (Phase 1.2) next

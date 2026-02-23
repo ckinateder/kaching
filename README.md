@@ -70,29 +70,37 @@ data/raw/
 └── ...
 ```
 
-## Running Tests
+## Usage
 
-```bash
-# Unit tests
-python -m unittest tests/test_downloaders.py
+Download the full dataset for every ticker that supports weekly options. This requires a Theta Data Terminal running on `localhost:25503`.
 
-# Performance comparison
-python test_concurrent_download.py
+```python
+from src.downloaders.dataset_downloader import DatasetDownloader
+from src.postprocess import postprocess_dataset
+import os
+from src.downloaders import get_weekly_options_tickers
+from tqdm import tqdm
+import random
+from time import sleep
+
+if __name__ == "__main__":
+    #tickers = ["TTD", "DECK", "MRK"]
+    tickers, data = get_weekly_options_tickers()
+    
+    tickers.remove('VIX')
+
+    random.shuffle(tickers)
+    downloader = DatasetDownloader(max_workers=20, rate_limit_delay=0.01)
+
+    print(f"Downloading datasets for {len(tickers)} tickers")
+    for i, ticker in enumerate(tickers):
+        print(f"Downloading dataset for {ticker} ({i+1}/{len(tickers)})")
+        df = downloader.download(
+            ticker=ticker,
+            start_date='2021-01-01',
+            end_date='2026-02-14',
+            save=True,
+            filepath=os.path.join('data', 'raw', f'{ticker}_dataset.parquet'),
+            incremental=True
+        )     
 ```
-
-## Roadmap
-
-- [x] Phase 1.1: Data download infrastructure
-- [ ] Phase 1.1a: Transform data (weekly options, OTM%, P&L)
-- [ ] Phase 1.2: Aggregation & statistics
-- [ ] Phase 2: Pricing engine
-- [ ] Phase 3: LLM explanations
-- [ ] Phase 4: CLI interface
-
-See `kaching-plan.md` for details.
-
-## Requirements
-
-- Python 3.12+
-- Theta Data Terminal (localhost:25503)
-- Dependencies: pandas, requests, yfinance, tqdm

@@ -3,6 +3,7 @@
 data
 venv
 api-thetadata
-src/**/__pycache__
-tests/**/__pycache__
+**/__pycache__
+**/__pycache__
 CLAUDE.md
+.env

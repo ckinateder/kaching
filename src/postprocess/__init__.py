@@ -23,7 +23,7 @@ import pandas as pd
 import numpy as np
 
 
-def add_moneyness_column(df: pd.DataFrame) -> pd.DataFrame:
+def add_moneyness(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add moneyness classification and intrinsic value columns to options DataFrame.
     
@@ -53,7 +53,7 @@ def add_moneyness_column(df: pd.DataFrame) -> pd.DataFrame:
         ...     'underlying_price': [100, 100, 100, 100, 100, 100],
         ...     'right': ['CALL', 'CALL', 'CALL', 'PUT', 'PUT', 'PUT']
         ... })
-        >>> result = add_moneyness_column(df)
+        >>> result = add_moneyness(df)
         >>> result[['right', 'moneyness_status', 'intrinsic_value']]
            right moneyness_status  intrinsic_value
         0  CALL              ATM             0.0
@@ -175,7 +175,7 @@ def add_price_at_expiry(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def calculate_pnl(df: pd.DataFrame) -> pd.DataFrame:
+def add_pnl(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add pnl and win columns based on P&L calculation.
 
@@ -200,9 +200,9 @@ def postprocess_dataset(df: pd.DataFrame, moneyness_threshold: tuple[float, floa
         df: DataFrame with 'bid', 'strike', 'close_at_expiry' columns.
         moneyness_threshold: Tuple of (lower, upper) moneyness thresholds.
     """
-    df = add_moneyness_column(df)
+    df = add_moneyness(df)
     df = add_price_at_expiry(df)
-    df = calculate_pnl(df)
+    df = add_pnl(df)
     df = df[df['right'] == 'PUT']
     df = df[(df['moneyness'] < moneyness_threshold[1]) & (df['moneyness'] > moneyness_threshold[0])]
     return df

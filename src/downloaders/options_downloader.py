@@ -377,14 +377,23 @@ class ThetaDataDownloader(BaseDownloader):
                     tqdm.write(f"[{date}] {error}")
 
         # Retry rate-limited dates with more conservative settings
+        retry_dates_set = set()
         if rate_limit_failures:
             print(f"\n🔄 Retrying {len(rate_limit_failures)} rate-limited dates with slower settings...")
-            retry_data = self._retry_failed_dates(ticker, rate_limit_failures)
-            if retry_data:
-                all_data.extend(retry_data)
+            retry_result = self._retry_failed_dates(ticker, rate_limit_failures)
+            # Defensive check: ensure we got the expected tuple structure
+            if isinstance(retry_result, tuple) and len(retry_result) == 2:
+                retry_dataframes, retry_dates_set = retry_result
+                if retry_dataframes:
+                    all_data.extend(retry_dataframes)
+            else:
+                # Fallback: log error but don't crash
+                tqdm.write(f"  ⚠ Unexpected return structure from _retry_failed_dates: {type(retry_result)}, skipping retry data")
+                # Don't extend all_data with unexpected structure to avoid crashes
 
         # Print error summary if any errors remain
-        remaining_errors = [e for e in errors if e[0] not in rate_limit_failures or e[0] in [d for d, _ in errors]]
+        # Remove successfully retried dates from errors list
+        remaining_errors = [(d, e) for d, e in errors if d not in retry_dates_set]
         if remaining_errors:
             print(f"\n⚠ {len(remaining_errors)} dates failed to download:")
             for date, error in remaining_errors[:5]:
@@ -447,12 +456,18 @@ class ThetaDataDownloader(BaseDownloader):
         # Retry rate-limited dates with more conservative settings
         if rate_limit_failures:
             print(f"\n🔄 Retrying {len(rate_limit_failures)} rate-limited dates with slower settings...")
-            retry_data = self._retry_failed_dates(ticker, rate_limit_failures)
-            if retry_data:
-                all_data.extend(retry_data)
+            retry_result = self._retry_failed_dates(ticker, rate_limit_failures)
+            # Defensive check: ensure we got the expected tuple structure
+            if isinstance(retry_result, tuple) and len(retry_result) == 2:
+                retry_dataframes, retry_dates_set = retry_result
+                if retry_dataframes:
+                    all_data.extend(retry_dataframes)
                 # Remove successfully retried dates from errors list
-                retry_dates_set = {date for date, _ in retry_data} if retry_data else set()
                 errors = [(d, e) for d, e in errors if d not in retry_dates_set]
+            else:
+                # Fallback: log error but don't crash
+                tqdm.write(f"  ⚠ Unexpected return structure from _retry_failed_dates: {type(retry_result)}, skipping retry data")
+                # Don't extend all_data with unexpected structure to avoid crashes
 
         # Print error summary if any non-trivial errors remain
         if errors:
@@ -468,7 +483,7 @@ class ThetaDataDownloader(BaseDownloader):
         self,
         ticker: str,
         failed_dates: list
-    ) -> list:
+    ) -> Tuple[list, set]:
         """
         Retry failed dates with more conservative settings.
 
@@ -479,7 +494,7 @@ class ThetaDataDownloader(BaseDownloader):
             failed_dates: List of date strings that failed due to rate limits
 
         Returns:
-            List of (date, dataframe) tuples for successful retries
+            Tuple of (list_of_dataframes, set_of_successful_dates) for successful retries
         """
         # Store original settings
         original_delay = self.rate_limit_delay
@@ -492,6 +507,7 @@ class ThetaDataDownloader(BaseDownloader):
         print(f"  Using sequential mode with {retry_delay}s delay between requests")
 
         successful_retries = []
+        successful_dates = set()
         retry_failures = 0
 
         for date in tqdm(failed_dates, desc=f"  Retrying {ticker}", unit="day"):
@@ -499,6 +515,7 @@ class ThetaDataDownloader(BaseDownloader):
 
             if df is not None:
                 successful_retries.append(df)
+                successful_dates.add(date)
             else:
                 retry_failures += 1
                 if error and "Rate limit (429)" not in error:
@@ -512,7 +529,7 @@ class ThetaDataDownloader(BaseDownloader):
         if retry_failures:
             print(f"  ✗ {retry_failures} dates still failed after retry")
 
-        return successful_retries
+        return successful_retries, successful_dates
 
     def _finalize_download(
         self,

@@ -4,6 +4,7 @@ import os
 from src.downloaders import get_weekly_options_tickers
 from tqdm import tqdm
 import random
+from time import sleep
 
 if __name__ == "__main__":
     #tickers = ["TTD", "DECK", "MRK"]
@@ -26,6 +27,7 @@ if __name__ == "__main__":
             incremental=True
         )
         
+        """
         df = postprocess_dataset(df, moneyness_threshold=(-0.1, 0))
 
         # save to parquet
@@ -35,3 +37,5 @@ if __name__ == "__main__":
         tqdm.write(f"Saved {ticker} dataset to {os.path.join('data', 'processed', f'{ticker}_dataset.parquet')}")
 
         print(f"Downloaded dataset for {ticker} ({i+1}/{len(tickers)})")
+        """
+        sleep(1)
