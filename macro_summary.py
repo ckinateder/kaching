@@ -6,15 +6,35 @@ from tqdm import tqdm
 
 from src.postprocess import add_moneyness, add_price_at_expiry, add_pnl
 
+def make_bucket_labels(bins: list[float]) -> list[str]:
+    """Given a list of monotonically increasing bin edges, return string labels."""
+    return [f"{bins[i]:.1f}-{bins[i+1]:.1f}%" for i in range(len(bins) - 1)]
+
 OTM_BINS = [0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]
-OTM_LABELS = [
-    "0.0-0.5%", "0.5-1.0%", "1.0-1.5%", "1.5-2.0%", "2.0-2.5%",
-    "2.5-3.0%", "3.0-3.5%", "3.5-4.0%", "4.0-4.5%", "4.5-5.0%",
-]
+OTM_LABELS = make_bucket_labels(OTM_BINS)
 MONEYNESS_THRESHOLD = (-0.2, 0)
 
 
 def _process_ticker(path: Path) -> dict | None:
+    """
+    Process a single ticker and return a dictionary of summary statistics.
+
+    Args:
+        path: Path to the ticker dataset parquet file.
+
+    Returns:
+        Dictionary of summary statistics.
+        - ticker: Ticker symbol.
+        - n_quotes: Number of quotes.
+        - avg_iv: Average implied volatility (percent).
+        - best_bucket: Best OTM bucket (e.g. "0.0-0.5%").
+        - best_bucket_avg_pnl: Average PNL of best bucket (dollars).
+        - best_bucket_avg_pnl_pct: Average PNL of best bucket as a percentage of latest price (percent).
+        - best_bucket_avg_spread: Average spread of best bucket (dollars).
+        - best_bucket_avg_spread_pct: Average spread of best bucket as a percentage of latest price (percent).
+        - latest_price: Latest price (dollars).
+    """
+
     ticker = path.stem.replace("_dataset", "")
     raw_df = pd.read_parquet(path)
 
@@ -55,18 +75,27 @@ def _process_ticker(path: Path) -> dict | None:
         return None
     best_bucket = bucket_pnl.idxmax()
 
-    # best pnl is avg pnl of best bucket
-    best_bucket_pnl = df[df["otm_bucket"] == best_bucket]["pnl"].mean()
-
     latest_price = (
         raw_df.sort_values("timestamp")["underlying_close"].iloc[-1]
     )
+
+    # best pnl is avg pnl of best bucket
+    best_bucket_avg_pnl = df[df["otm_bucket"] == best_bucket]["pnl"].mean()
+    best_bucket_avg_pnl_pct = best_bucket_avg_pnl / latest_price * 100
+
+    # avg bid/ask spread in best bucket. highest bid and lowest ask
+    best_bucket_avg_spread = df[df["otm_bucket"] == best_bucket]["bid"].max() - df[df["otm_bucket"] == best_bucket]["ask"].min()
+    best_bucket_avg_spread_pct = best_bucket_avg_spread / latest_price * 100
+
     out = {
         "ticker": ticker,
         "n_quotes": len(df),
         "avg_iv": f"{df['implied_vol'].mean() * 100:.0f}%",
         "best_bucket": best_bucket,
-        "best_bucket_avg_pnl": f"${best_bucket_pnl:.2f}",
+        "best_bucket_avg_pnl": f"${best_bucket_avg_pnl:.2f}",
+        "best_bucket_avg_pnl_pct": f"{best_bucket_avg_pnl_pct:.2f}%",
+        "best_bucket_avg_spread": f"${best_bucket_avg_spread:.2f}",
+        "best_bucket_avg_spread_pct": f"{best_bucket_avg_spread_pct:.2f}%",
         "latest_price": f"${latest_price:.2f}",
     }
     return out

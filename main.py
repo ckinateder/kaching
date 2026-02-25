@@ -6,6 +6,13 @@ import pandas as pd
 from src.postprocess import add_moneyness, add_pnl, add_price_at_expiry
 
 
+def make_bucket_labels(bins: list[float]) -> list[str]:
+    """Given a list of monotonically increasing bin edges, return string labels."""
+    return [f"{bins[i]:.1f}-{bins[i+1]:.1f}%" for i in range(len(bins) - 1)]
+
+OTM_BINS = [0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]
+OTM_LABELS = make_bucket_labels(OTM_BINS)
+
 if __name__ == "__main__":
     ticker = "DECK"
     moneyness_threshold = (-0.2, 0)
@@ -48,23 +55,7 @@ if __name__ == "__main__":
     funnel.append(("DTE 6-9", len(df)))
 
     # OTM buckets in 0.5% increments
-    df["otm_bucket"] = pd.cut(
-        df["otm_pct"],
-        bins=[0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0],
-        labels=[
-            "0.0-0.5%",
-            "0.5-1.0%",
-            "1.0-1.5%",
-            "1.5-2.0%",
-            "2.0-2.5%",
-            "2.5-3.0%",
-            "3.0-3.5%",
-            "3.5-4.0%",
-            "4.0-4.5%",
-            "4.5-5.0%",
-        ],
-        include_lowest=True,
-    )
+    df["otm_bucket"] = pd.cut(df["otm_pct"], bins=OTM_BINS, labels=OTM_LABELS, include_lowest=True)
 
     # Dedup: one row per (date, strike, expiry) — keep last quote of the day
     df = df.sort_values("timestamp")
