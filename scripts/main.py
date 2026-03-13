@@ -1,66 +1,27 @@
+import sys
+from pathlib import Path
+
+import __init__
+
+import argparse
 import os
 
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from src.postprocess import add_moneyness, add_pnl, add_price_at_expiry
-
-
-def make_bucket_labels(bins: list[float]) -> list[str]:
-    """Given a list of monotonically increasing bin edges, return string labels."""
-    return [f"{bins[i]:.1f}-{bins[i+1]:.1f}%" for i in range(len(bins) - 1)]
-
-OTM_BINS = [0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]
-OTM_LABELS = make_bucket_labels(OTM_BINS)
+from src.postprocess import OTM_BINS, OTM_LABELS, filter_weekly_put_options
 
 if __name__ == "__main__":
-    ticker = "DECK"
+    parser = argparse.ArgumentParser(description="Analyze options data for a given ticker")
+    parser.add_argument("--ticker", type=str, help="Stock ticker symbol (e.g., DECK, AAPL)")
+    args = parser.parse_args()
+    ticker = args.ticker.upper()
     moneyness_threshold = (-0.2, 0)
 
     raw_df = pd.read_parquet(os.path.join("data", "raw", "dataset", f"{ticker}.parquet"))
-    funnel = [("raw", len(raw_df))]
-
-    # Exclude rows where yfinance (split-adjusted) and Theta prices are on different scales
-    ratio = raw_df["underlying_price"] / raw_df["underlying_close"]
-    raw_df = raw_df[(ratio > 0.9) & (ratio < 1.1)]
-    funnel.append(("split ratio filter", len(raw_df)))
-
-    df = add_moneyness(raw_df)
-    df = add_price_at_expiry(df)
-    df = add_pnl(df)
-    df = df[df["right"] == "PUT"]
-    funnel.append(("PUT only", len(df)))
-
-    df = df[
-        (df["moneyness"] < moneyness_threshold[1])
-        & (df["moneyness"] > moneyness_threshold[0])
-    ]
-    funnel.append((f"moneyness {moneyness_threshold[0]*100:.0f}% to 0% OTM", len(df)))
-
-    df = df[df["bid"] > 0]  # no market bid = untradeable
-    funnel.append(("bid > 0", len(df)))
-
-    df["otm_pct"] = abs(df["moneyness"]) * 100
-
-    # Day of week filter: Thu/Fri entries only
-    df["quote_date"] = pd.to_datetime(df["timestamp"]).dt.date
-    df["day_of_week"] = pd.to_datetime(df["timestamp"]).dt.dayofweek
-    df = df[df["day_of_week"].isin([3, 4])]  # Thursday=3, Friday=4
-    funnel.append(("Thu/Fri only", len(df)))
-
-    # DTE filter: target next-week expiry (7-8 days out)
-    df["expiration_date"] = pd.to_datetime(df["expiration"])
-    df["dte"] = (df["expiration_date"] - pd.to_datetime(df["timestamp"])).dt.days
-    df = df[(df["dte"] >= 6) & (df["dte"] <= 9)] # 6-9 days out
-    funnel.append(("DTE 6-9", len(df)))
-
-    # OTM buckets in 0.5% increments
-    df["otm_bucket"] = pd.cut(df["otm_pct"], bins=OTM_BINS, labels=OTM_LABELS, include_lowest=True)
-
-    # Dedup: one row per (date, strike, expiry) — keep last quote of the day
-    df = df.sort_values("timestamp")
-    df = df.groupby(["quote_date", "strike", "expiration"]).last().reset_index()
-    funnel.append(("dedup", len(df)))
+    
+    # Apply all filters using shared function
+    df, funnel = filter_weekly_put_options(raw_df, moneyness_threshold)
 
     print("=== ROW FUNNEL ===")
     for i, (label, n) in enumerate(funnel):
@@ -184,14 +145,20 @@ if __name__ == "__main__":
     axes[1, 1].set_xlabel("Date")
     axes[1, 1].set_ylabel("Count")
 
-    # 6. Stock price over full period (one point per calendar date, pre-filter)
+    # 6. Stock price over analysis period (quote_date range)
+    analysis_start = df["quote_date"].min()
+    analysis_end = df["quote_date"].max()
+    
     stock_by_date = (
         raw_df.groupby(pd.to_datetime(raw_df["timestamp"]).dt.date)["underlying_close"]
         .first()
         .sort_index()
     )
+    # Filter to only dates within the analysis period
+    stock_by_date = stock_by_date.loc[analysis_start:analysis_end]
+    
     stock_by_date.plot(ax=axes[1, 2], color="black", linewidth=0.8)
-    axes[1, 2].set_title("Stock Price (Full Period)")
+    axes[1, 2].set_title(f"Stock Price ({analysis_start} to {analysis_end})")
     axes[1, 2].set_ylabel("Price ($)")
 
     date_range = f"{df['quote_date'].min()} to {df['quote_date'].max()}"

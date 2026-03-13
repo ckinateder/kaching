@@ -72,8 +72,53 @@ df = downloader.download('AAPL', '2024-01-01', '2024-12-31')
 
 ## Usage
 
+### Scripts
+
+The `scripts/` directory contains standalone scripts for data processing and analysis:
+
+| Script | Purpose | Output |
+|--------|---------|--------|
+| `scripts/create_dataset.py` | Download datasets for all weekly options tickers | `data/raw/dataset/*.parquet` |
+| `scripts/macro_summary.py` | Generate summary statistics across all tickers | `data/outputs/macro_summary.csv` |
+| `scripts/main.py` | Analyze a single ticker with visualizations | `img/<TICKER>_bucket_analysis.png` |
+
+### Download Full Dataset
+
 Download the full dataset for every ticker that supports weekly options. This requires a Theta Data Terminal running on `localhost:25503`.
 
 ```bash
-python create_dataset.py
+python scripts/create_dataset.py
+```
+
+### Generate Macro Summary
+
+Process all downloaded datasets and generate summary statistics:
+
+```bash
+python scripts/macro_summary.py
+```
+
+Output: `data/outputs/macro_summary.csv`
+
+### Analyze Single Ticker
+
+Run detailed analysis with visualizations for a specific ticker:
+
+```bash
+python scripts/main.py --ticker AAPL
+```
+
+Output: `img/AAPL_bucket_analysis.png` and `data/processed/AAPL_filtered_dataset.csv`
+
+### Directory Structure
+
+```
+data/
+├── raw/
+│   ├── dataset/           # Combined datasets (options + stock prices)
+│   ├── option/            # Raw options contracts
+│   └── stock/             # Daily stock prices
+├── processed/             # Filtered and transformed data
+├── outputs/               # Output artifacts (e.g., macro_summary.csv)
+└── test/                  # Test data
 ```

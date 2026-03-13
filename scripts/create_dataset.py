@@ -1,3 +1,7 @@
+import sys
+from pathlib import Path
+
+import __init__
 from src.downloaders.dataset_downloader import DatasetDownloader
 from src.postprocess import postprocess_dataset
 import os
