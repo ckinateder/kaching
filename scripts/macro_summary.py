@@ -85,23 +85,24 @@ def _process_ticker(path: Path) -> dict | None:
     }
     return out
 
+def generate_macro_summary(paths: list[Path]) -> pd.DataFrame:
+    rows = []
+    with ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+        futures = {executor.submit(_process_ticker, p): p for p in paths}
+        with tqdm(total=len(paths), desc="Processing tickers") as pbar:
+            for future in as_completed(futures):
+                result = future.result()
+                if result is not None:
+                    rows.append(result)
+                pbar.update(1)
+    return pd.DataFrame(rows)
+
 if __name__ == "__main__":
     paths = sorted(Path(os.path.join("data", "raw", "dataset")).glob("*.parquet"))
     if not paths:
         print("No *.parquet files found in data/raw/dataset")
     else:
-        rows = []
-        with ThreadPoolExecutor(max_workers=18) as executor:
-            futures = {executor.submit(_process_ticker, p): p for p in paths}
-            with tqdm(total=len(paths), desc="Processing tickers") as pbar:
-                for future in as_completed(futures):
-                    result = future.result()
-                    if result is not None:
-                        rows.append(result)
-                    pbar.update(1)
-
-        # save to csv
-        df = pd.DataFrame(rows)
+        df = generate_macro_summary(paths)
         df.to_csv(os.path.join("outputs", "macro_summary.csv"), index=False)
 
         print(df.to_string())

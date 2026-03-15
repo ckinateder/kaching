@@ -29,6 +29,8 @@ import os
 INPUT_CSV  = os.path.join("outputs", "macro_summary.csv")
 OUTPUT_CSV = os.path.join("outputs", "kaching_scored_stocks.csv")
 
+
+
 HARD_FILTERS = {
     "min_bucket_count": 10,
     "min_price":        3,
@@ -105,7 +107,7 @@ OUTPUT_COLS = [
     "best_bucket_avg_spread_pct", "latest_price",
 ]
 
-def main():
+def generate_composite_score(path: str) -> pd.DataFrame:
     path = sys.argv[1] if len(sys.argv) > 1 else INPUT_CSV
     df = load_and_clean(path)
     df = apply_hard_filters(df)
@@ -127,4 +129,4 @@ def main():
     print(f"\nSaved → {OUTPUT_CSV}")
 
 if __name__ == "__main__":
-    main()
+    generate_composite_score()
