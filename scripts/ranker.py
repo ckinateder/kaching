@@ -34,7 +34,6 @@ HARD_FILTERS = {
     "min_price":        3,
     "max_price":        300,
     "min_pnl_pct":      0.0,   # strictly positive EV
-    "max_spread_pct":   20.0,
 }
 
 WEIGHTS = {
@@ -73,7 +72,6 @@ def apply_hard_filters(df: pd.DataFrame) -> pd.DataFrame:
     df = df[df["latest_price"]      >= HARD_FILTERS["min_price"]]
     df = df[df["latest_price"]      <= HARD_FILTERS["max_price"]]
     df = df[df["best_bucket_avg_pnl_pct"] > HARD_FILTERS["min_pnl_pct"]]
-    df = df[df["best_bucket_avg_spread_pct"] <= HARD_FILTERS["max_spread_pct"]]
     print(f"Hard filters: {before} → {len(df)} stocks")
     return df.copy()
 

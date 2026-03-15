@@ -65,8 +65,9 @@ def _process_ticker(path: Path) -> dict | None:
     best_bucket_avg_pnl = df[df["otm_bucket"] == best_bucket]["pnl"].mean()
     best_bucket_avg_pnl_pct = best_bucket_avg_pnl / latest_price * 100
 
-    # avg bid/ask spread in best bucket. highest bid and lowest ask
-    best_bucket_avg_spread = df[df["otm_bucket"] == best_bucket]["bid"].max() - df[df["otm_bucket"] == best_bucket]["ask"].min()
+    # avg bid/ask spread in best bucket: (ask - bid) per quote, then average
+    best_bucket_quotes = df[df["otm_bucket"] == best_bucket]
+    best_bucket_avg_spread = (best_bucket_quotes["ask"] - best_bucket_quotes["bid"]).mean()
     best_bucket_avg_spread_pct = best_bucket_avg_spread / latest_price * 100
 
     out = {
