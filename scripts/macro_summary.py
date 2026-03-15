@@ -104,5 +104,5 @@ if __name__ == "__main__":
     else:
         df = generate_macro_summary(paths)
         df.to_csv(os.path.join("outputs", "macro_summary.csv"), index=False)
-
+        print(f"Saved macro summary to {os.path.join('outputs', 'macro_summary.csv')}")
         print(df.to_string())
