@@ -2,22 +2,9 @@
 
 Semi-automated options pricing for the "Weekly Cash KaChing" put spread strategy using empirical P&L distributions from historical options data.
 
-## Project Status
-
-**Current Phase:** Phase 1.1 - Data Foundation (Download Infrastructure)
-
-- ✅ Options data downloader (Theta Data API)
-- ✅ Stock price downloader (yfinance)
-- ✅ Combined dataset downloader
-- ✅ Concurrent downloads with rate limiting
-- ✅ Incremental downloads (skip existing data)
-- ✅ Auto-retry for failed requests
-
-**Next:** Phase 1.1a - Data transformation (filter weekly options, calculate OTM%, P&L)
+**Core Philosophy:** Not predicting "Will SCHW go up?" but answering "When selling 1.5% OTM puts, what was the actual P&L distribution?"
 
 ## Quick Start
-
-### Installation
 
 ```bash
 python -m venv venv
@@ -25,100 +12,75 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Start Theta Data Terminal on localhost:25503 (for options data).
+Options data requires Theta Data Terminal running on `localhost:25503`.
 
-### Download Data
-
-When `save=True`, `DatasetDownloader` writes three files automatically:
-
-```
-data/raw/
-├── dataset/AAPL.parquet   # Combined (options + stock prices joined)
-├── option/AAPL.parquet    # Raw options contracts
-└── stock/AAPL.parquet     # Daily stock prices
-```
-
-```python
-from src.downloaders import DatasetDownloader
-
-downloader = DatasetDownloader(max_workers=8)
-df = downloader.download(
-    ticker='AAPL',
-    start_date='2024-01-01',
-    end_date='2024-12-31',
-    save=True,
-    filepath='data/raw/dataset/AAPL.parquet',
-    incremental=True  # Only downloads missing dates
-)
-```
-
-**Performance:** 6-7x faster with concurrent downloads (8 workers default)
-
-Incremental state is tracked independently per folder — on subsequent runs, `option/` and `stock/` are updated with only new dates, and the `dataset/` file is rebuilt from the full joined data (join is fast; API calls are what's slow).
-
-### Individual Downloaders
-
-```python
-# Options only
-from src.downloaders import ThetaDataDownloader
-downloader = ThetaDataDownloader()
-df = downloader.download('AAPL', '2024-01-01', '2024-12-31')
-
-# Stock prices only
-from src.downloaders import YFinanceDownloader
-downloader = YFinanceDownloader()
-df = downloader.download('AAPL', '2024-01-01', '2024-12-31')
-```
-
-## Usage
-
-### Scripts
-
-The `scripts/` directory contains standalone scripts for data processing and analysis:
+## Scripts
 
 | Script | Purpose | Output |
 |--------|---------|--------|
 | `scripts/create_dataset.py` | Download datasets for all weekly options tickers | `data/raw/dataset/*.parquet` |
-| `scripts/macro_summary.py` | Generate summary statistics across all tickers | `data/outputs/macro_summary.csv` |
-| `scripts/main.py` | Analyze a single ticker with visualizations | `img/<TICKER>_bucket_analysis.png` |
-
-### Download Full Dataset
-
-Download the full dataset for every ticker that supports weekly options. This requires a Theta Data Terminal running on `localhost:25503`.
+| `scripts/macro_summary.py` | Generate summary stats + composite scores across all tickers | `outputs/macro_summary.csv`, `outputs/kaching_scored_stocks.csv` |
+| `scripts/main.py` | Analyze a single ticker with visualizations | `img/<TICKER>_bucket_analysis.png`, `data/processed/<TICKER>_filtered_dataset.csv` |
 
 ```bash
+# Download all data (requires Theta Terminal)
 python scripts/create_dataset.py
-```
 
-### Generate Macro Summary
-
-Process all downloaded datasets and generate summary statistics:
-
-```bash
+# Score all tickers
 python scripts/macro_summary.py
-```
 
-Output: `data/outputs/macro_summary.csv`
-
-### Analyze Single Ticker
-
-Run detailed analysis with visualizations for a specific ticker:
-
-```bash
+# Analyze a single ticker
 python scripts/main.py --ticker AAPL
 ```
 
-Output: `img/AAPL_bucket_analysis.png` and `data/processed/AAPL_filtered_dataset.csv`
+## Architecture
 
-### Directory Structure
+```
+src/
+├── downloaders/
+│   ├── options_downloader.py    # Theta Data API (EOD options, day-by-day)
+│   ├── stock_downloader.py      # yfinance (bulk daily prices)
+│   └── dataset_downloader.py   # Combined downloader with concurrent workers
+└── postprocess/
+    └── __init__.py              # Filtering, P&L calc, OTM bucketing
+```
 
 ```
 data/
 ├── raw/
-│   ├── dataset/           # Combined datasets (options + stock prices)
-│   ├── option/            # Raw options contracts
-│   └── stock/             # Daily stock prices
-├── processed/             # Filtered and transformed data
-├── outputs/               # Output artifacts (e.g., macro_summary.csv)
-└── test/                  # Test data
+│   ├── dataset/    # Combined parquet files (options + stock joined)
+│   ├── option/     # Raw options contracts
+│   └── stock/      # Daily stock prices
+└── processed/      # Filtered per-ticker CSVs
+
+outputs/
+├── macro_summary.csv            # Per-ticker stats (IV, best bucket, P&L, spread)
+└── kaching_scored_stocks.csv    # Ranked + tiered stock universe (A/B/C)
 ```
+
+## Scoring
+
+`macro_summary.py` runs two passes:
+
+1. **Macro summary** — for each ticker, finds the OTM bucket with highest avg P&L and computes stats
+2. **Composite score** — ranks the filtered universe by a weighted signal:
+   - 50% avg P&L% in best bucket
+   - 30% liquidity (quote count)
+   - 20% spread (inverted — lower is better)
+
+Hard filters before scoring: `best_bucket_count >= 10`, `$3 <= price <= $300`, `avg_pnl_pct > 0`.
+
+Tiers: **A** = top 15%, **B** = top 50%, **C** = rest.
+
+## OTM Buckets
+
+Options are grouped into 0.5% increments: `0.0-0.5%`, `0.5-1.0%`, ..., `4.5-5.0%` OTM.
+
+Filter criteria for weekly puts: PUT only, Thu/Fri quote dates, DTE 6-9, bid > 0, deduped per (date, strike, expiry).
+
+## Strategy Context
+
+Implements the "Weekly Cash KaChing" strategy:
+- Sell weekly OTM puts (7-8 DTE)
+- Protected by longer-dated long put (90-150 DTE, ~25 delta)
+- Typical cycle: 16 weeks, rolling long put every ~120 days
