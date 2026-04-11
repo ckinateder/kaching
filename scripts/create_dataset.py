@@ -3,7 +3,6 @@ from pathlib import Path
 
 import __init__
 from src.downloaders.dataset_downloader import DatasetDownloader
-from src.postprocess import postprocess_dataset
 import os
 from src.downloaders import get_weekly_options_tickers
 from tqdm import tqdm
@@ -31,15 +30,4 @@ if __name__ == "__main__":
             incremental=True
         )
         
-        """
-        df = postprocess_dataset(df, moneyness_threshold=(-0.1, 0))
-
-        # save to parquet
-        if not os.path.exists(os.path.join('data', 'processed')):
-            os.makedirs(os.path.join('data', 'processed'))
-        df.to_parquet(os.path.join('data', 'processed', f'{ticker}_dataset.parquet'), index=False)
-        tqdm.write(f"Saved {ticker} dataset to {os.path.join('data', 'processed', f'{ticker}_dataset.parquet')}")
-
-        print(f"Downloaded dataset for {ticker} ({i+1}/{len(tickers)})")
-        """
         sleep(1)
